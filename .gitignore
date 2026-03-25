@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+.kiro/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ExcelForge Runtime
+.runtime_data/
+*.db
+*.db-journal
+snapshots/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Excel Files (user-specific)
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+
+# User config (use config.example.yaml instead)
+config.yaml
+
+# Trae AI
+.trae/
+
+# User-specific scripts and configs
+mcp.json
+codex-mcp-snippet.toml
+run_server.bat
+
+# 设计文档（本地保留，不上传）
+设计文档*.md
+总体设计规范*.md
+多 MCP 共享 Runtime 架构设计文档.md

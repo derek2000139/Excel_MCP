@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "ExcelForge": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "excelforge",
+        "--config",
+        "这里是ExcelForge项目的绝对路径/config.yaml",
+        "serve"
+      ],
+      "cwd": "这里是ExcelForge项目的绝对路径"
+    }
+  }
+}

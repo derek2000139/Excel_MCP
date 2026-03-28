@@ -8,7 +8,7 @@
         "-m",
         "excelforge.gateway.host",
         "--config",
-        "D:/Tools/AI/ExcelForge/excel-mcp.yaml",
+        "D:/YOUR_PROJECT_PATH/excel-mcp.yaml",
         "--profile",
         "basic_edit"
       ],

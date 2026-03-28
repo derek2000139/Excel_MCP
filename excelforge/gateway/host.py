@@ -217,18 +217,17 @@ def register_tools_for_profile(
 
     check_tool_budget(len(enabled_tools), profile_info)
 
+    class ToolHandler:
+        def __init__(self, runtime_client, tool, method):
+            self._runtime = runtime_client
+            self._tool = tool
+            self._method = method
+
+        def __call__(self, **kwargs):
+            return call_runtime(self._runtime, tool_name=self._tool, method=self._method, params=kwargs)
+
     for tool_name in enabled_tools:
         runtime_method = TOOL_MANIFEST_MAP.get(tool_name, tool_name)
-
-        class ToolHandler:
-            def __init__(self, runtime_client, tool, method):
-                self._runtime = runtime_client
-                self._tool = tool
-                self._method = method
-
-            def __call__(self, **kwargs):
-                return call_runtime(self._runtime, tool_name=self._tool, method=self._method, params=kwargs)
-
         mcp.add_tool(tool_name, tool_name, ToolHandler(runtime, tool_name, runtime_method))
 
 

@@ -1,6 +1,6 @@
-bundles:
+﻿bundles:
   foundation:
-    description: "所有 profile 的基础包 - server/workbook/names"
+    description: "所有 profile 的基础包 - server / workbook / names"
     domains:
       - server
       - workbook
@@ -9,7 +9,7 @@ bundles:
     required: true
 
   edit:
-    description: "基础编辑 - sheet/range 操作"
+    description: "基础编辑 - sheet / range 操作"
     domains:
       - sheet
       - range
@@ -17,7 +17,7 @@ bundles:
       - foundation
 
   calc_format:
-    description: "计算与格式 - formula/format 工具"
+    description: "计算与格式 - formula / format"
     domains:
       - formula
       - format
@@ -48,7 +48,7 @@ bundles:
       - foundation
 
   data:
-    description: "数据工作流 - PQ/Table"
+    description: "数据工作流 - PQ / Table"
     domains:
       - pq
       - table
@@ -56,7 +56,7 @@ bundles:
       - foundation
 
   report:
-    description: "报表与语义对象 - chart/pivot/model"
+    description: "报表与语义对象 - chart / pivot / model"
     domains:
       - chart
       - pivot

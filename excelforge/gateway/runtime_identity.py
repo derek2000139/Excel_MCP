@@ -97,20 +97,6 @@ def _compute_instance_id(product_name: str, scope: str, instance_name: str) -> s
     return f"rt_{short_hash}"
 
 
-def get_legacy_entrypoint_scope(entrypoint_name: str) -> str:
-    entrypoint_to_scope = {
-        "excel-core-mcp": "legacy_core",
-        "excel-vba-mcp": "legacy_vba",
-        "excel-recovery-mcp": "legacy_recovery",
-        "excel-pq-mcp": "legacy_pq",
-    }
-    return entrypoint_to_scope.get(entrypoint_name, "default")
-
-
-def get_legacy_entrypoint_instance(entrypoint_name: str) -> str:
-    return "default"
-
-
 def identity_to_dict(identity: RuntimeIdentity) -> dict[str, Any]:
     return {
         "instance_id": identity.instance_id,

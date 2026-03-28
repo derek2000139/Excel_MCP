@@ -9,6 +9,7 @@ from typing import Any
 from excelforge.config import AppConfig
 from excelforge.models.error_models import ErrorCode, ExcelForgeError
 from excelforge.persistence.backup_repo import BackupMetaRecord, BackupRepository
+from excelforge.runtime.handle_ownership import ensure_related_handle_owned, ensure_workbook_id_owned
 from excelforge.runtime.workbook_registry import WorkbookHandle
 from excelforge.runtime.workbook_registry import WorkbookRegistry
 from excelforge.services.snapshot_service import SnapshotService
@@ -37,6 +38,11 @@ class BackupService:
         self._workbook_registry = workbook_registry
         self._snapshot_service = snapshot_service
         self._cleanup_lock = threading.Lock()
+
+    def _runtime_fingerprint(self) -> str | None:
+        if self._workbook_registry is None:
+            return None
+        return self._workbook_registry.runtime_fingerprint
 
     def create_backup(
         self,
@@ -103,6 +109,8 @@ class BackupService:
         limit: int,
         offset: int,
     ) -> dict[str, Any]:
+        if workbook_id:
+            ensure_workbook_id_owned(workbook_id, self._runtime_fingerprint())
         total, items = self._backup_repo.list_backups(
             workbook_id=workbook_id,
             file_path=file_path,
@@ -125,10 +133,17 @@ class BackupService:
         workbook_id: str,
         backup_id: str,
     ) -> dict[str, Any]:
+        ensure_workbook_id_owned(workbook_id, self._runtime_fingerprint())
         record = self._backup_repo.get_backup(backup_id)
         if record is None:
             raise ExcelForgeError(ErrorCode.E404_SNAPSHOT_NOT_FOUND, f"Backup not found: {backup_id}")
 
+        ensure_related_handle_owned(
+            handle_kind="backup",
+            handle_id=backup_id,
+            owner_workbook_id=str(record.workbook_id),
+            runtime_fingerprint=self._runtime_fingerprint(),
+        )
         if record.workbook_id != workbook_id:
             raise ExcelForgeError(
                 ErrorCode.E400_INVALID_ARGUMENT,

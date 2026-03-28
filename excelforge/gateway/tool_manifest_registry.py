@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +14,6 @@ class ToolManifest:
     bundle: str
     runtime_method: str
     requires_excel_ready: bool = True
-    legacy_entrypoints: list[str] = field(default_factory=list)
     maturity: str = "stable"
     risk_level: str = "low"
     description: str = ""
@@ -51,28 +50,7 @@ class ToolManifestRegistry:
                     requires_excel_ready=True,
                     maturity=domain_data.get("maturity", "stable"),
                     risk_level=domain_data.get("risk_level", "low"),
-                    legacy_entrypoints=self._infer_legacy_entrypoints(tool_name),
                 )
-
-    def _infer_legacy_entrypoints(self, tool_name: str) -> list[str]:
-        entrypoint_map = {
-            "server": ["core"],
-            "workbook": ["core"],
-            "names": ["core"],
-            "sheet": ["core"],
-            "range": ["core"],
-            "formula": ["core"],
-            "format": ["core"],
-            "vba": ["vba"],
-            "recovery": ["recovery"],
-            "pq": ["pq"],
-            "analysis": ["core"],
-        }
-        parts = tool_name.split(".")
-        if parts:
-            prefix = parts[0]
-            return entrypoint_map.get(prefix, ["core"])
-        return ["core"]
 
     def get_manifest(self, tool_name: str) -> ToolManifest | None:
         return self._manifests.get(tool_name)
@@ -122,7 +100,6 @@ class ToolManifestRegistry:
             "bundle": manifest.bundle,
             "runtime_method": manifest.runtime_method,
             "requires_excel_ready": manifest.requires_excel_ready,
-            "legacy_entrypoints": manifest.legacy_entrypoints,
             "maturity": manifest.maturity,
             "risk_level": manifest.risk_level,
             "description": manifest.description,

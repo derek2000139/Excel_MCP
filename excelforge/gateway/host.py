@@ -3,18 +3,19 @@ from __future__ import annotations
 import argparse
 import sys
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from excelforge.gateway.config import GatewayConfig, load_gateway_config
 from excelforge.gateway.profile_resolver import BundleRegistry, ProfileResolutionError, ProfileResolver
 from excelforge.gateway.runtime_client_manager import get_global_runtime_client
 from excelforge.gateway.runtime_identity import (
-    get_host_identity,
+    RuntimeIdentity,
     resolve_runtime_identity,
 )
-from excelforge.gateway.tool_manifest_registry import ToolManifestRegistry
 from excelforge.gateway.utils import call_runtime
 
 
@@ -67,6 +68,16 @@ TOOL_MANIFEST_MAP: dict[str, str] = {
     "pq.refresh": "pq.refresh",
     "audit.list_operations": "audit.list_operations",
 }
+
+
+@dataclass(frozen=True)
+class HostRuntimeSettings:
+    identity: RuntimeIdentity
+    auto_start: bool
+    connect_timeout: int
+    call_timeout: int
+    runtime_config_path: str | None
+    display_name: str
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -166,27 +177,69 @@ def check_tool_budget(tool_count: int, profile_info: dict[str, Any]) -> None:
         )
 
 
-def create_host_runtime_client(args: argparse.Namespace) -> Any:
-    scope = args.runtime_scope
-    instance_name = args.runtime_instance
-    runtime_data_dir = None
-    if args.config:
-        config_path = Path(args.config)
-        runtime_config_path = str(config_path.resolve())
+def _resolve_path(base_dir: Path, raw_path: str | None) -> str | None:
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = (base_dir / path).resolve()
     else:
-        runtime_config_path = "./runtime-config.yaml"
+        path = path.resolve()
+    return str(path)
+
+
+def _resolve_gateway_config_path(raw_path: str | None) -> Path | None:
+    if raw_path:
+        return Path(raw_path).resolve()
+
+    default_path = Path("excel-mcp.yaml")
+    if default_path.exists():
+        return default_path.resolve()
+    return None
+
+
+def resolve_host_runtime_settings(args: argparse.Namespace) -> HostRuntimeSettings:
+    config_path = _resolve_gateway_config_path(args.config)
+    gateway_config: GatewayConfig | None = None
+    runtime_data_dir: str | None = None
+    runtime_config_path = str(Path("runtime-config.yaml").resolve())
+    auto_start = True
+    connect_timeout = 10
+    call_timeout = 30
+    display_name = "ExcelForge"
+
+    if config_path is not None:
+        gateway_config = load_gateway_config(config_path)
+        base_dir = config_path.parent
+        runtime_data_dir = _resolve_path(base_dir, gateway_config.gateway.runtime_data_dir)
+        runtime_config_path = _resolve_path(base_dir, gateway_config.gateway.runtime_config_path)
+        auto_start = gateway_config.gateway.auto_start_runtime
+        connect_timeout = gateway_config.gateway.connect_timeout_seconds
+        call_timeout = gateway_config.gateway.call_timeout_seconds
+        display_name = gateway_config.gateway.display_name
 
     identity = resolve_runtime_identity(
         runtime_data_dir=runtime_data_dir,
-        scope=scope,
-        instance_name=instance_name,
+        scope=args.runtime_scope,
+        instance_name=args.runtime_instance,
     )
-    client = get_global_runtime_client(
+    return HostRuntimeSettings(
         identity=identity,
-        auto_start=True,
-        connect_timeout=10,
-        call_timeout=30,
+        auto_start=auto_start,
+        connect_timeout=connect_timeout,
+        call_timeout=call_timeout,
         runtime_config_path=runtime_config_path,
+        display_name=display_name,
+    )
+
+
+def create_host_runtime_client(settings: HostRuntimeSettings) -> Any:
+    client = get_global_runtime_client(
+        identity=settings.identity,
+        auto_start=settings.auto_start,
+        connect_timeout=settings.connect_timeout,
+        call_timeout=settings.call_timeout,
+        runtime_config_path=settings.runtime_config_path,
     )
     return client
 
@@ -251,17 +304,17 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     try:
-        runtime = create_host_runtime_client(args)
+        settings = resolve_host_runtime_settings(args)
+        runtime = create_host_runtime_client(settings)
     except Exception as exc:
         print(f"Error creating Runtime client: {exc}", file=sys.stderr)
         return 1
 
     if args.print_runtime_endpoint:
-        identity = get_host_identity()
-        print(f"Runtime endpoint: {identity.pipe_name}")
-        print(f"Runtime instance ID: {identity.instance_id}")
+        print(f"Runtime endpoint: {settings.identity.pipe_name}")
+        print(f"Runtime instance ID: {settings.identity.instance_id}")
 
-    display_name = f"ExcelForge ({args.profile})"
+    display_name = f"{settings.display_name} ({args.profile})"
     mcp = FastMCP(display_name)
 
     register_tools_for_profile(

@@ -207,11 +207,17 @@ def _parse_env_value(raw: str) -> Any:
 
 def _env_overrides(prefix: str = "EXCELFORGE_") -> dict[str, Any]:
     result: dict[str, Any] = {}
+    ignored_suffixes = {
+        "CONFIG",
+        "RUNTIME_SCOPE",
+        "RUNTIME_INSTANCE",
+        "RUNTIME_DATA_DIR",
+    }
     for key, value in os.environ.items():
         if not key.startswith(prefix):
             continue
         suffix = key[len(prefix) :]
-        if suffix in {"CONFIG"}:
+        if suffix in ignored_suffixes:
             continue
         parts = [p.lower() for p in suffix.split("__") if p]
         if not parts:

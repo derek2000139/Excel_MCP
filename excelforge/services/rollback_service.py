@@ -5,6 +5,7 @@ from typing import Any
 from excelforge.config import AppConfig
 from excelforge.models.error_models import ErrorCode, ExcelForgeError
 from excelforge.persistence.snapshot_repo import SnapshotRepository
+from excelforge.runtime.handle_ownership import ensure_related_handle_owned, ensure_workbook_id_owned
 from excelforge.runtime.excel_worker import ExcelWorker
 from excelforge.services.backup_service import BackupService
 from excelforge.services.snapshot_service import SnapshotService
@@ -35,6 +36,9 @@ class RollbackService:
         self._snapshot_repo = snapshot_repo
         self._snapshot_service = snapshot_service
         self._backup_service = backup_service
+
+    def _runtime_fingerprint(self) -> str | None:
+        return self._worker.context.registry.runtime_fingerprint
 
     def undo_last(self, *, workbook_id: str) -> dict[str, Any]:
         def op(ctx: Any) -> dict[str, Any]:
@@ -118,6 +122,8 @@ class RollbackService:
         )
 
     def list_snapshots(self, workbook_id: str | None, limit: int, offset: int) -> dict[str, Any]:
+        if workbook_id:
+            ensure_workbook_id_owned(workbook_id, self._runtime_fingerprint())
         total, items = self._snapshot_repo.list_snapshots(workbook_id=workbook_id, limit=limit, offset=offset)
         has_more = (offset + len(items)) < total
         next_offset = (offset + len(items)) if has_more else None
@@ -132,6 +138,12 @@ class RollbackService:
         def op(ctx: Any) -> dict[str, Any]:
             meta, payload = self._snapshot_service.load_snapshot(snapshot_id)
             workbook_id = str(meta["workbook_id"])
+            ensure_related_handle_owned(
+                handle_kind="snapshot",
+                handle_id=snapshot_id,
+                owner_workbook_id=workbook_id,
+                runtime_fingerprint=ctx.registry.runtime_fingerprint,
+            )
             handle = ctx.registry.get(workbook_id)
             if handle is None:
                 raise ExcelForgeError(
@@ -188,6 +200,12 @@ class RollbackService:
         workbook_id: str | None,
     ) -> dict[str, Any]:
         meta, payload = self._snapshot_service.load_snapshot(snapshot_id)
+        ensure_related_handle_owned(
+            handle_kind="snapshot",
+            handle_id=snapshot_id,
+            owner_workbook_id=str(meta["workbook_id"]),
+            runtime_fingerprint=ctx.registry.runtime_fingerprint,
+        )
         target_workbook_id = workbook_id or str(meta["workbook_id"])
         if target_workbook_id != str(meta["workbook_id"]):
             raise ExcelForgeError(

@@ -97,7 +97,10 @@ class WorkbookService:
                     "Workbook can only be opened as read-only (likely locked by another process)",
                 )
 
-            workbook_id = generate_workbook_id(ctx.registry.generation)
+            workbook_id = generate_workbook_id(
+                ctx.registry.generation,
+                ctx.registry.runtime_fingerprint,
+            )
             file_format, max_rows, max_columns = self._detect_file_format(str(normalized))
             handle = WorkbookHandle(
                 workbook_id=workbook_id,
@@ -361,7 +364,10 @@ class WorkbookService:
                     pass
                 raise ExcelForgeError(ErrorCode.E500_INTERNAL, f"Failed to create workbook: {exc}") from exc
 
-            workbook_id = generate_workbook_id(ctx.registry.generation)
+            workbook_id = generate_workbook_id(
+                ctx.registry.generation,
+                ctx.registry.runtime_fingerprint,
+            )
             vba_enabled = supports_vba(suffix)
             handle = WorkbookHandle(
                 workbook_id=workbook_id,

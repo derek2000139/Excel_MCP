@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from excelforge.models.error_models import ErrorCode, ExcelForgeError
 from excelforge.runtime.workbook_registry import WorkbookHandle, WorkbookRegistry
 from excelforge.utils.ids import generate_workbook_id
 
@@ -36,3 +39,14 @@ def test_registry_rejects_mismatched_generation_id() -> None:
 
     assert registry.get(stale_id) is None
     assert registry.remove(stale_id) is None
+
+
+def test_registry_rejects_foreign_runtime_workbook_id() -> None:
+    registry = WorkbookRegistry(runtime_fingerprint="deadbeef")
+    foreign_id = generate_workbook_id(registry.generation, "cafebabe")
+
+    with pytest.raises(ExcelForgeError) as exc_info:
+        registry.get(foreign_id)
+
+    assert exc_info.value.code == ErrorCode.E424_WORKBOOK_HANDLE_FOREIGN_RUNTIME
+    assert registry.is_stale_workbook_id(foreign_id) is False

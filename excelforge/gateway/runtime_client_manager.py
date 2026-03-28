@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -34,7 +35,11 @@ def get_global_runtime_client(
 ) -> RuntimeClientManager:
     with _GLOBAL_CLIENT_LOCK:
         global _GLOBAL_RUNTIME_CLIENT
-        if _GLOBAL_RUNTIME_CLIENT is None:
+        if _GLOBAL_RUNTIME_CLIENT is None or (
+            identity is not None and _GLOBAL_RUNTIME_CLIENT.identity != identity
+        ):
+            if _GLOBAL_RUNTIME_CLIENT is not None:
+                _GLOBAL_RUNTIME_CLIENT.close()
             if identity is None:
                 identity = get_host_identity()
             _GLOBAL_RUNTIME_CLIENT = RuntimeClientManager(
@@ -200,7 +205,26 @@ class RuntimeClientManager:
             "--config",
             str(Path(self._runtime_config_path).resolve()),
         ]
-        subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        subprocess.Popen(
+            cmd,
+            cwd=str(Path(self._runtime_config_path).resolve().parent),
+            env=self._build_runtime_environment(),
+            creationflags=creationflags,
+        )
+
+    def _build_runtime_environment(self) -> dict[str, str]:
+        runtime_data_dir = str(self._identity.data_dir)
+        env = os.environ.copy()
+        env["EXCELFORGE_RUNTIME_SCOPE"] = self._identity.scope
+        env["EXCELFORGE_RUNTIME_INSTANCE"] = self._identity.instance_name
+        env["EXCELFORGE_RUNTIME_DATA_DIR"] = runtime_data_dir
+        env["EXCELFORGE_RUNTIME__PIPE_NAME"] = self._identity.pipe_name
+        env["EXCELFORGE_RUNTIME__DATA_DIR"] = runtime_data_dir
+        env["EXCELFORGE_PATHS__SNAPSHOTS_DIR"] = str(self._identity.data_dir / "snapshots")
+        env["EXCELFORGE_PATHS__BACKUPS_DIR"] = str(self._identity.data_dir / "backups")
+        env["EXCELFORGE_PATHS__SQLITE_PATH"] = str(self._identity.data_dir / "excelforge.db")
+        return env
 
     def _connect_pipe(self, pipe_name: str) -> None:
         try:
@@ -242,7 +266,7 @@ class RuntimeClientManager:
     def get_connection_status(self) -> dict[str, Any]:
         lock = read_runtime_lock_from_dir(str(self._identity.data_dir))
         return {
-            "connected": self._pipe is None,
+            "connected": self._pipe is not None,
             "instance_id": self._identity.instance_id,
             "pipe_name": self._identity.pipe_name,
             "lock_exists": lock is not None,

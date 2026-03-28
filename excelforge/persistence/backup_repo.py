@@ -52,6 +52,35 @@ class BackupRepository:
                 ),
             )
 
+    def get_backup(self, backup_id: str) -> BackupMetaRecord | None:
+        with self._db.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT backup_id, workbook_id, file_path, backup_file_path, file_size_bytes,
+                       source_tool, source_operation_id, description, created_at,
+                       expired, expired_reason, cleaned_at
+                FROM backup_meta
+                WHERE backup_id = ?
+                """,
+                (backup_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return BackupMetaRecord(
+            backup_id=str(row["backup_id"]),
+            workbook_id=str(row["workbook_id"]),
+            file_path=str(row["file_path"]),
+            backup_file_path=str(row["backup_file_path"]),
+            file_size_bytes=int(row["file_size_bytes"] or 0),
+            source_tool=str(row["source_tool"]),
+            source_operation_id=str(row["source_operation_id"]) if row["source_operation_id"] is not None else None,
+            description=str(row["description"]),
+            created_at=str(row["created_at"]),
+            expired=bool(row["expired"]),
+            expired_reason=str(row["expired_reason"]) if row["expired_reason"] is not None else None,
+            cleaned_at=str(row["cleaned_at"]) if row["cleaned_at"] is not None else None,
+        )
+
     def list_backups(
         self,
         *,

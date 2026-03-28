@@ -1,6 +1,6 @@
-profiles:
+﻿profiles:
   basic_edit:
-    description: "基础编辑 - 只读/写工作簿、工作表、区域"
+    description: "基础编辑 - 只加载 workbook / sheet / range / names / server"
     bundles:
       - foundation
       - edit
@@ -8,7 +8,7 @@ profiles:
     risk_level: low
 
   calc_format:
-    description: "公式与格式 - 包含计算与格式化工具"
+    description: "公式与格式 - 在基础编辑上增加 formula / format"
     bundles:
       - foundation
       - edit
@@ -17,7 +17,7 @@ profiles:
     risk_level: low
 
   automation:
-    description: "VBA 自动化 - 包含 VBA 与恢复工具"
+    description: "自动化 - VBA 与恢复工具"
     bundles:
       - foundation
       - automation
@@ -26,7 +26,7 @@ profiles:
     risk_level: medium
 
   data_workflow:
-    description: "数据工作流 - PQ/Table/分析能力"
+    description: "数据工作流 - PQ / Table / 审计分析"
     bundles:
       - foundation
       - data
@@ -35,7 +35,7 @@ profiles:
     risk_level: medium
 
   reporting:
-    description: "报表与可视化 - 图表/透视/模型"
+    description: "报表与可视化 - report / analysis"
     bundles:
       - foundation
       - report
@@ -44,7 +44,7 @@ profiles:
     risk_level: medium
 
   all:
-    description: "全部工具 - 开发/调试用途"
+    description: "全部工具 - 开发 / 调试用途"
     bundles:
       - foundation
       - edit
@@ -57,38 +57,3 @@ profiles:
     tool_budget: null
     risk_level: high
     is_development: true
-
-  legacy_core:
-    description: "兼容旧 excel-core-mcp 入口"
-    bundles:
-      - foundation
-      - edit
-      - calc_format
-      - analysis
-    tool_budget: 40
-    risk_level: low
-
-  legacy_vba:
-    description: "兼容旧 excel-vba-mcp 入口"
-    bundles:
-      - foundation
-      - automation
-      - recovery
-    tool_budget: 20
-    risk_level: medium
-
-  legacy_recovery:
-    description: "兼容旧 excel-recovery-mcp 入口"
-    bundles:
-      - foundation
-      - recovery
-    tool_budget: 15
-    risk_level: medium
-
-  legacy_pq:
-    description: "兼容旧 excel-pq-mcp 入口"
-    bundles:
-      - foundation
-      - data
-    tool_budget: 18
-    risk_level: medium

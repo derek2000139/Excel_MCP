@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from excelforge.gateway.runtime_identity import resolve_runtime_identity
 from excelforge.runtime_api.context import RuntimeApiContext
 
 
@@ -68,10 +69,12 @@ class ServerApi:
         }
 
     def _compute_runtime_instance_id(self, pipe_name: str, data_dir: str) -> str:
-        import hashlib
-        raw = f"ExcelForge:default:default:{pipe_name}:{data_dir}"
-        short_hash = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
-        return f"rt_{short_hash}"
+        identity = resolve_runtime_identity(
+            runtime_data_dir=data_dir,
+            scope=self._get_runtime_scope(),
+            instance_name=self._get_runtime_instance_name(),
+        )
+        return identity.instance_id
 
     def _get_runtime_scope(self) -> str:
         import os

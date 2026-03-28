@@ -10,7 +10,7 @@
         "--config",
         "D:/Tools/AI/ExcelForge/excel-mcp.yaml",
         "--profile",
-        "basic_edit"
+        "automation"
       ],
       "cwd": "D:/Tools/AI/ExcelForge"
     }

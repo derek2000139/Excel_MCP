@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from excelforge.runtime.handle_ownership import ensure_workbook_id_owned, is_foreign_workbook_id
 from excelforge.utils.ids import parse_workbook_generation
 
 
@@ -21,13 +22,18 @@ class WorkbookHandle:
 
 
 class WorkbookRegistry:
-    def __init__(self) -> None:
+    def __init__(self, runtime_fingerprint: str | None = None) -> None:
         self._items: dict[str, WorkbookHandle] = {}
         self._generation = 1
+        self._runtime_fingerprint = runtime_fingerprint
 
     @property
     def generation(self) -> int:
         return self._generation
+
+    @property
+    def runtime_fingerprint(self) -> str | None:
+        return self._runtime_fingerprint
 
     def count(self) -> int:
         return len(self._items)
@@ -36,6 +42,7 @@ class WorkbookRegistry:
         self._items[handle.workbook_id] = handle
 
     def get(self, workbook_id: str) -> WorkbookHandle | None:
+        ensure_workbook_id_owned(workbook_id, self._runtime_fingerprint)
         if not self._is_current_generation(workbook_id):
             return None
         return self._items.get(workbook_id)
@@ -47,6 +54,7 @@ class WorkbookRegistry:
         return handle
 
     def remove(self, workbook_id: str) -> WorkbookHandle | None:
+        ensure_workbook_id_owned(workbook_id, self._runtime_fingerprint)
         if not self._is_current_generation(workbook_id):
             return None
         return self._items.pop(workbook_id, None)
@@ -75,6 +83,11 @@ class WorkbookRegistry:
             return True
         return generation == self._generation
 
+    def is_foreign_workbook_id(self, workbook_id: str) -> bool:
+        return is_foreign_workbook_id(workbook_id, self._runtime_fingerprint)
+
     def is_stale_workbook_id(self, workbook_id: str) -> bool:
+        if self.is_foreign_workbook_id(workbook_id):
+            return False
         generation = parse_workbook_generation(workbook_id)
         return generation is not None and generation != self._generation

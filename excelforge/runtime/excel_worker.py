@@ -4,6 +4,7 @@ import queue
 import threading
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Generic, TypeVar
 
 from excelforge.config import AppConfig
@@ -11,6 +12,7 @@ from excelforge.models.error_models import ErrorCode, ExcelForgeError
 from excelforge.runtime.excel_app import ExcelAppManager
 from excelforge.runtime.retry_policy import run_with_com_retry
 from excelforge.runtime.workbook_registry import WorkbookRegistry
+from excelforge.utils.ids import compute_runtime_fingerprint
 from excelforge.utils.timestamps import utc_now_rfc3339
 
 T = TypeVar("T")
@@ -42,9 +44,13 @@ class ExcelWorker:
         self._last_health_ping: str | None = None
         self._rebuild_count = 0
         self._last_rebuild_at: str | None = None
+        runtime_fingerprint = compute_runtime_fingerprint(
+            config.runtime.pipe_name,
+            str(Path(config.runtime.data_dir).resolve()),
+        )
         self._context = WorkerContext(
             app_manager=ExcelAppManager(config),
-            registry=WorkbookRegistry(),
+            registry=WorkbookRegistry(runtime_fingerprint=runtime_fingerprint),
             worker=self,
         )
         self._ready_event = threading.Event()

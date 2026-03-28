@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from excelforge.runtime.handle_ownership import ensure_workbook_id_owned
 from excelforge.runtime_api.context import RuntimeApiContext
 
 
 class RecoveryApi:
     def __init__(self, ctx: RuntimeApiContext) -> None:
         self._ctx = ctx
+
+    def _ensure_workbook_runtime_ownership(self, workbook_id: str | None) -> None:
+        if not workbook_id:
+            return
+        ensure_workbook_id_owned(
+            str(workbook_id),
+            self._ctx.services.worker.context.registry.runtime_fingerprint,
+        )
 
     def list_snapshots(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
         workbook_id = params.get("workbook_id")
@@ -67,11 +76,16 @@ class RecoveryApi:
 
     def snapshot_stats(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
         workbook_id = params.get("workbook_id")
+
+        def op() -> dict[str, Any]:
+            self._ensure_workbook_runtime_ownership(workbook_id)
+            return self._ctx.services.snapshot_service.get_stats(workbook_id=workbook_id)
+
         return self._ctx.run_operation(
             method_name="recovery.snapshot_stats",
             actor_id=actor_id,
             client_request_id=params.get("client_request_id"),
-            operation_fn=lambda: self._ctx.services.snapshot_service.get_stats(workbook_id=workbook_id),
+            operation_fn=op,
             args_summary={"workbook_id": workbook_id},
             default_workbook_id=workbook_id,
         )
@@ -80,15 +94,20 @@ class RecoveryApi:
         workbook_id = params.get("workbook_id")
         max_age_hours = params.get("max_age_hours")
         dry_run = bool(params.get("dry_run", False))
+
+        def op() -> dict[str, Any]:
+            self._ensure_workbook_runtime_ownership(workbook_id)
+            return self._ctx.services.snapshot_service.run_cleanup(
+                max_age_hours=max_age_hours,
+                workbook_id=workbook_id,
+                dry_run=dry_run,
+            )
+
         return self._ctx.run_operation(
             method_name="recovery.snapshot_cleanup",
             actor_id=actor_id,
             client_request_id=params.get("client_request_id"),
-            operation_fn=lambda: self._ctx.services.snapshot_service.run_cleanup(
-                max_age_hours=max_age_hours,
-                workbook_id=workbook_id,
-                dry_run=dry_run,
-            ),
+            operation_fn=op,
             args_summary={"workbook_id": workbook_id, "max_age_hours": max_age_hours, "dry_run": dry_run},
             default_workbook_id=workbook_id,
         )

@@ -41,7 +41,7 @@ def test_runtime_handler_success_response_shape() -> None:
         "method": "workbook.open",
         "params": {
             "file_path": "D:/demo.xlsx",
-            "actor_id": "excel-core-mcp",
+            "actor_id": "excel-mcp",
             "client_request_id": "cid-1",
         },
     }
@@ -50,7 +50,7 @@ def test_runtime_handler_success_response_shape() -> None:
     assert resp["id"] == "req_1"
     assert "result" in resp
     assert resp["result"]["success"] is True
-    assert resp["result"]["data"]["actor_id"] == "excel-core-mcp"
+    assert resp["result"]["data"]["actor_id"] == "excel-mcp"
 
 
 def test_runtime_handler_error_response_shape() -> None:
@@ -59,7 +59,7 @@ def test_runtime_handler_error_response_shape() -> None:
         "jsonrpc": "2.0",
         "id": "req_2",
         "method": "workbook.info",
-        "params": {"workbook_id": "wb_1", "actor_id": "excel-core-mcp"},
+        "params": {"workbook_id": "wb_1", "actor_id": "excel-mcp"},
     }
     resp = handler.handle_request(req)
     assert resp["jsonrpc"] == "2.0"

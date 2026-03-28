@@ -10,7 +10,11 @@
         "--config",
         "D:/Tools/AI/ExcelForge/excel-mcp.yaml",
         "--profile",
-        "basic_edit"
+        "basic_edit",
+        "--enable-bundle",
+        "automation",
+        "--disable-bundle",
+        "edit"
       ],
       "cwd": "D:/Tools/AI/ExcelForge"
     }

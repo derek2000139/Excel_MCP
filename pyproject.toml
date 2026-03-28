@@ -1,7 +1,7 @@
 [project]
 name = "excelforge"
-version = "2.0.0"
-description = "ExcelForge V2 multi-MCP runtime with shared JSON-RPC pipe backend"
+version = "2.2.0"
+description = "ExcelForge V2.2 - Unified MCP Host with Profile/Bundle tool assembly"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,10 +21,6 @@ dev = [
 excelforge = "excelforge.main:main"
 excelforge-runtime = "excelforge.runtime.main:main"
 excel-mcp = "excelforge.gateway.host:main"
-excelforge-core = "excelforge.gateway.core.main:main"
-excelforge-vba = "excelforge.gateway.vba.main:main"
-excelforge-recovery = "excelforge.gateway.recovery.main:main"
-excelforge-pq = "excelforge.gateway.pq.main:main"
 
 [build-system]
 requires = ["setuptools>=69", "wheel"]

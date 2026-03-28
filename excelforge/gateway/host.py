@@ -219,18 +219,19 @@ def register_tools_for_profile(
 
     for tool_name in enabled_tools:
         runtime_method = TOOL_MANIFEST_MAP.get(tool_name, tool_name)
+        tool_description = tool_name.replace(".", " ").replace("_", " ")
 
-        def make_tool(tool: str, method: str):
+        def make_handler(t: str, m: str):
             def handler(**kwargs):
                 return call_runtime(
                     runtime,
-                    tool_name=tool,
-                    method=method,
+                    tool_name=t,
+                    method=m,
                     params=kwargs,
                 )
             return handler
 
-        mcp.add_tool(tool_name, f"ExcelForge {tool_name}", make_tool(tool_name, runtime_method))
+        mcp.add_tool(tool_name, tool_description, make_handler(tool_name, runtime_method))
 
 
 def main(argv: list[str] | None = None) -> int:

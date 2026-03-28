@@ -4,7 +4,7 @@ profiles:
     bundles:
       - foundation
       - edit
-    tool_budget: 15
+    tool_budget: 30
     risk_level: low
 
   calc_format:
@@ -13,7 +13,7 @@ profiles:
       - foundation
       - edit
       - calc_format
-    tool_budget: 18
+    tool_budget: 40
     risk_level: low
 
   automation:
@@ -22,7 +22,7 @@ profiles:
       - foundation
       - automation
       - recovery
-    tool_budget: 12
+    tool_budget: 20
     risk_level: medium
 
   data_workflow:
@@ -65,7 +65,7 @@ profiles:
       - edit
       - calc_format
       - analysis
-    tool_budget: 25
+    tool_budget: 40
     risk_level: low
 
   legacy_vba:
@@ -74,7 +74,7 @@ profiles:
       - foundation
       - automation
       - recovery
-    tool_budget: 12
+    tool_budget: 20
     risk_level: medium
 
   legacy_recovery:
@@ -82,7 +82,7 @@ profiles:
     bundles:
       - foundation
       - recovery
-    tool_budget: 8
+    tool_budget: 15
     risk_level: medium
 
   legacy_pq:
@@ -90,5 +90,5 @@ profiles:
     bundles:
       - foundation
       - data
-    tool_budget: 10
+    tool_budget: 18
     risk_level: medium

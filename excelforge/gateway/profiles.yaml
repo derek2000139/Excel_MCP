@@ -4,7 +4,10 @@
     bundles:
       - foundation
       - edit
-    tool_budget: 30
+    # 2026-03-29: tool_budget 从 30 调整为 35
+    # 原因: foundation(12) + edit(19) = 31 个工具，原预算 30 已超限
+    # 详见设计文档V2.2 §11.5.1
+    tool_budget: 35
     risk_level: low
 
   calc_format:

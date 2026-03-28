@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from excelforge.gateway.config import GatewayConfig, load_gateway_config
 from excelforge.gateway.profile_resolver import BundleRegistry, ProfileResolutionError, ProfileResolver
@@ -19,6 +20,7 @@ from excelforge.gateway.runtime_identity import (
 from excelforge.gateway.utils import call_runtime
 
 
+# ── 工具 → runtime 方法映射 ──────────────────────────
 TOOL_MANIFEST_MAP: dict[str, str] = {
     "server.get_status": "server.status",
     "server.health": "server.health",
@@ -27,11 +29,16 @@ TOOL_MANIFEST_MAP: dict[str, str] = {
     "workbook.save_file": "workbook.save",
     "workbook.close_file": "workbook.close",
     "workbook.inspect": "workbook.info",
+    "workbook.list_open": "workbook.list",
     "names.inspect": "names.list",
     "names.manage": "names.read",
+    "names.create": "names.create",
+    "names.delete": "names.delete",
     "sheet.create_sheet": "sheet.create",
     "sheet.rename_sheet": "sheet.rename",
+    "sheet.preview_delete": "sheet.preview_delete",
     "sheet.delete_sheet": "sheet.delete",
+    "sheet.inspect_structure": "sheet.inspect",
     "sheet.set_auto_filter": "sheet.auto_filter",
     "sheet.get_conditional_formats": "sheet.get_conditional_formats",
     "sheet.get_data_validations": "sheet.get_data_validations",
@@ -45,6 +52,7 @@ TOOL_MANIFEST_MAP: dict[str, str] = {
     "range.delete_columns": "range.delete_columns",
     "range.sort_data": "range.sort",
     "range.merge": "range.merge",
+    "range.unmerge": "range.unmerge",
     "format.set_number_format": "format.set_style",
     "format.set_font": "format.set_style",
     "format.set_fill": "format.set_style",
@@ -52,21 +60,449 @@ TOOL_MANIFEST_MAP: dict[str, str] = {
     "format.set_alignment": "format.set_style",
     "format.set_column_width": "format.auto_fit",
     "format.set_row_height": "format.auto_fit",
+    "formula.fill_range": "formula.fill",
+    "formula.set_single": "formula.set_single",
+    "formula.get_dependencies": "formula.get_dependencies",
+    "formula.repair": "formula.repair",
     "vba.inspect_project": "vba.inspect_project",
+    "vba.get_module_code": "vba.get_module_code",
     "vba.scan_code": "vba.scan_code",
     "vba.sync_module": "vba.sync_module",
     "vba.remove_module": "vba.remove_module",
     "vba.execute": "vba.execute_macro",
+    "vba.execute_inline": "vba.execute_inline",
     "vba.compile": "vba.compile",
     "rollback.manage": "recovery.undo_last",
-    "backups.manage": "recovery.list_backups",
+    "rollback.preview_snapshot": "recovery.preview_snapshot",
+    "rollback.restore_snapshot": "recovery.restore_snapshot",
     "snapshot.manage": "recovery.list_snapshots",
+    "snapshot.get_stats": "recovery.snapshot_stats",
+    "snapshot.cleanup": "recovery.snapshot_cleanup",
+    "backups.manage": "recovery.list_backups",
+    "backups.restore": "recovery.restore_backup",
     "pq.list_connections": "pq.list_connections",
     "pq.list_queries": "pq.list_queries",
     "pq.get_code": "pq.get_query_code",
     "pq.update_query": "pq.update_query",
     "pq.refresh": "pq.refresh",
     "audit.list_operations": "audit.list_operations",
+}
+
+# ── 工具参数 JSON Schema 注册表 ─────────────────────
+# 每个 tool_name → (description, {param_name: json_schema})
+# 与 runtime_api 中各方法从 params dict 读取的 key 一一对应
+_STR = {"type": "string"}
+_BOOL = {"type": "boolean"}
+_INT = {"type": "integer"}
+
+TOOL_PARAM_SCHEMA: dict[str, tuple[str, dict[str, dict]]] = {
+    # ── server ──
+    "server.get_status": ("获取 ExcelForge Runtime 状态", {}),
+    "server.health": ("健康检查", {}),
+    # ── workbook ──
+    "workbook.open_file": ("打开 Excel 工作簿", {
+        "file_path": {**_STR, "description": "工作簿的绝对路径"},
+        "read_only": {**_BOOL, "description": "是否只读打开", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "workbook.create_file": ("创建新 Excel 工作簿", {
+        "file_path": {**_STR, "description": "新工作簿的保存路径（绝对路径）"},
+        "sheet_names": {"type": "array", "items": {"type": "string"}, "description": "工作表名称列表", "default": ["Sheet1"]},
+        "overwrite": {**_BOOL, "description": "是否覆盖已存在的文件", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "workbook.save_file": ("保存工作簿", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "save_as_path": {"type": "string", "description": "另存为路径（可选，不填则原位保存）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "workbook.close_file": ("关闭工作簿", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "save_before_close": {**_BOOL, "description": "关闭前是否保存", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "workbook.list_open": ("列出已打开的工作簿", {
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "workbook.inspect": ("获取工作簿信息", {
+        "workbook_id": {"type": "string", "description": "工作簿 ID（可选，不填返回默认工作簿）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── names ──
+    "names.inspect": ("列出命名区域", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "scope": {**_STR, "description": "范围: all / workbook / sheet", "default": "all"},
+        "sheet_name": {"type": "string", "description": "工作表名称（scope=sheet 时必填）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "names.manage": ("读取命名区域值", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "range_name": {**_STR, "description": "命名区域名称"},
+        "value_mode": {**_STR, "description": "值模式: raw / formatted / formula", "default": "raw"},
+        "row_offset": {**_INT, "description": "行偏移", "default": 0},
+        "row_limit": {**_INT, "description": "最大行数", "default": 200},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "names.create": ("创建命名区域", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "name": {**_STR, "description": "命名区域名称"},
+        "refers_to": {**_STR, "description": "引用区域（如 Sheet1!$A$1:$D$10）"},
+        "scope": {**_STR, "description": "作用域: workbook / sheet", "default": "workbook"},
+        "sheet_name": {"type": "string", "description": "工作表名称（scope=sheet 时必填）", "default": None},
+        "overwrite": {**_BOOL, "description": "是否覆盖已有同名命名区域", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "names.delete": ("删除命名区域", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "name": {**_STR, "description": "命名区域名称"},
+        "scope": {**_STR, "description": "作用域: workbook / sheet", "default": "workbook"},
+        "sheet_name": {"type": "string", "description": "工作表名称（scope=sheet 时必填）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── sheet ──
+    "sheet.create_sheet": ("创建工作表", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "新工作表名称"},
+        "position": {"type": "string", "description": "位置: last（默认，末尾）/ first / after（激活表之后）/ before / after", "default": "last"},
+        "reference_sheet": {"type": "string", "description": "参考工作表（position=before/after 时使用）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.rename_sheet": ("重命名工作表", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "当前工作表名称"},
+        "new_name": {**_STR, "description": "新名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.preview_delete": ("预览删除工作表（获取 confirm_token）", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "要删除的工作表名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.delete_sheet": ("删除工作表", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "confirm_token": {"type": "string", "description": "确认令牌（从预览获取）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.inspect_structure": ("检查工作表结构", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "sample_rows": {**_INT, "description": "预览行数", "default": 5},
+        "scan_rows": {**_INT, "description": "扫描行数", "default": 10},
+        "max_profile_columns": {**_INT, "description": "最大分析列数", "default": 50},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.set_auto_filter": ("设置自动筛选", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "action": {**_STR, "description": "操作: set / clear"},
+        "range": {**_STR, "description": "筛选区域（如 A1:D100）"},
+        "filters": {"type": "array", "items": {"type": "object"}, "description": "筛选条件列表"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.get_conditional_formats": ("获取条件格式", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {"type": "string", "description": "单元格区域（可选）", "default": None},
+        "limit": {**_INT, "description": "最大返回数量", "default": 100},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.get_data_validations": ("获取数据验证规则", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {"type": "string", "description": "单元格区域（可选）", "default": None},
+        "limit": {**_INT, "description": "最大返回数量", "default": 100},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── range ──
+    "range.read_values": ("读取单元格值", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "单元格区域（如 A1:D10）"},
+        "value_mode": {**_STR, "description": "值模式: raw / formatted / formula", "default": "raw"},
+        "include_formulas": {**_BOOL, "description": "是否包含公式列", "default": False},
+        "row_offset": {**_INT, "description": "行偏移", "default": 0},
+        "row_limit": {**_INT, "description": "最大行数", "default": 200},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.write_values": ("写入单元格值", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "start_cell": {**_STR, "description": "起始单元格（如 A1）"},
+        "values": {"type": "array", "items": {"type": "object"}, "description": "要写入的值（二维数组）"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.clear_contents": ("清除单元格内容", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "单元格区域"},
+        "scope": {**_STR, "description": "清除范围: contents / formats / all", "default": "contents"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.copy": ("复制单元格区域", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "源工作表名称"},
+        "source_range": {**_STR, "description": "源区域"},
+        "target_sheet": {**_STR, "description": "目标工作表名称"},
+        "target_start_cell": {**_STR, "description": "目标起始单元格"},
+        "paste_mode": {**_STR, "description": "粘贴模式: values / formulas / formats / all", "default": "values"},
+        "target_workbook_id": {"type": "string", "description": "目标工作簿 ID（跨工作簿复制时使用）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.insert_rows": ("插入行", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "row": {**_INT, "description": "在第几行之前插入"},
+        "count": {**_INT, "description": "插入行数", "default": 1},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.delete_rows": ("删除行", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "row": {**_INT, "description": "起始行号"},
+        "count": {**_INT, "description": "删除行数", "default": 1},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.insert_columns": ("插入列", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "column": {**_STR, "description": "列标识（如 A 或 3）"},
+        "count": {**_INT, "description": "插入列数", "default": 1},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.delete_columns": ("删除列", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "column": {**_STR, "description": "列标识（如 A 或 3）"},
+        "count": {**_INT, "description": "删除列数", "default": 1},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.sort_data": ("排序数据", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "排序区域"},
+        "sort_keys": {"type": "array", "items": {"type": "object"}, "description": "排序键列表（每项含 column/direction）"},
+        "has_header": {**_BOOL, "description": "是否有标题行", "default": False},
+        "case_sensitive": {**_BOOL, "description": "是否区分大小写", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.merge": ("合并单元格", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "要合并的区域"},
+        "across": {**_BOOL, "description": "是否按行合并", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.unmerge": ("取消合并单元格", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "要取消合并的区域"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── format ──
+    "format.set_number_format": ("设置数字格式", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "单元格区域"},
+        "style": {"type": "object", "description": "样式对象，包含 number_format 等属性"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "format.set_font": ("设置字体", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "单元格区域"},
+        "style": {"type": "object", "description": "样式对象，包含 name/size/bold/italic/color 等属性"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "format.set_fill": ("设置填充色", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "单元格区域"},
+        "style": {"type": "object", "description": "样式对象，包含 fill_color 等属性"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "format.set_border": ("设置边框", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "单元格区域"},
+        "style": {"type": "object", "description": "样式对象，包含 border 相关属性"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "format.set_alignment": ("设置对齐方式", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "单元格区域"},
+        "style": {"type": "object", "description": "样式对象，包含 horizontal/vertical/wrap_text 等属性"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "format.set_column_width": ("自动调整列宽", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "列区域（如 A:D 或 A）"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "format.set_row_height": ("自动调整行高", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "行区域"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── formula ──
+    "formula.fill_range": ("批量填充公式", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "目标区域（如 A2:A100）"},
+        "formula": {**_STR, "description": "公式表达式（如 =B2*C2）"},
+        "formula_type": {**_STR, "description": "公式类型: standard / array / r1c1", "default": "standard"},
+        "preview_rows": {**_INT, "description": "预览行数", "default": 5},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "formula.set_single": ("设置单个公式", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "cell": {**_STR, "description": "单元格地址（如 A1）"},
+        "formula": {**_STR, "description": "公式表达式"},
+        "formula_type": {**_STR, "description": "公式类型: standard / array / r1c1", "default": "standard"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "formula.get_dependencies": ("获取公式依赖链", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "cell": {**_STR, "description": "单元格地址（如 A1）"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "formula.repair": ("修复/扫描公式", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "扫描区域"},
+        "action": {**_STR, "description": "操作: scan（扫描）/ repair（修复）", "default": "scan"},
+        "replacements": {"type": "array", "items": {"type": "object"}, "description": "替换规则列表（action=repair 时使用）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── vba ──
+    "vba.inspect_project": ("检查 VBA 工程", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "vba.get_module_code": ("获取 VBA 模块代码", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "module_name": {**_STR, "description": "模块名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "vba.scan_code": ("扫描 VBA 代码风险", {
+        "code": {**_STR, "description": "VBA 代码"},
+        "module_name": {**_STR, "description": "模块名称"},
+        "module_type": {**_STR, "description": "模块类型: standard_module / class_module / userform / document", "default": "standard_module"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "vba.sync_module": ("同步 VBA 模块代码", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "module_name": {**_STR, "description": "模块名称"},
+        "module_type": {**_STR, "description": "模块类型: standard_module / class_module / userform / document", "default": "standard_module"},
+        "code": {**_STR, "description": "VBA 代码内容"},
+        "overwrite": {**_BOOL, "description": "是否覆盖已有代码", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "vba.remove_module": ("删除 VBA 模块", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "module_name": {**_STR, "description": "模块名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "vba.execute": ("执行 VBA 宏", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "procedure_name": {**_STR, "description": "过程名称"},
+        "arguments": {"type": "array", "items": {"type": "object"}, "description": "参数列表", "default": []},
+        "timeout_seconds": {**_INT, "description": "超时秒数", "default": 30},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "vba.execute_inline": ("内联执行 VBA 代码", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "code": {**_STR, "description": "VBA 代码内容"},
+        "procedure_name": {**_STR, "description": "过程名称", "default": "Main"},
+        "timeout_seconds": {**_INT, "description": "超时秒数", "default": 30},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "vba.compile": ("编译 VBA 工程", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── recovery ──
+    "rollback.manage": ("撤销最后一次操作", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "rollback.preview_snapshot": ("预览快照内容", {
+        "snapshot_id": {**_STR, "description": "快照 ID"},
+        "sample_limit": {**_INT, "description": "预览行数", "default": 20},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "rollback.restore_snapshot": ("恢复指定快照", {
+        "snapshot_id": {**_STR, "description": "快照 ID"},
+        "preview_token": {"type": "string", "description": "预览令牌（从预览快照获取）", "default": ""},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "snapshot.manage": ("列出快照", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "limit": {**_INT, "description": "最大返回数量", "default": 20},
+        "offset": {**_INT, "description": "偏移量", "default": 0},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "snapshot.get_stats": ("获取快照统计信息", {
+        "workbook_id": {**_STR, "description": "工作簿 ID（可选）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "snapshot.cleanup": ("清理过期快照", {
+        "workbook_id": {**_STR, "description": "工作簿 ID（可选）", "default": None},
+        "max_age_hours": {**_INT, "description": "最大保留小时数（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "仅预览不实际删除", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "backups.manage": ("列出备份", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "file_path": {"type": "string", "description": "文件路径筛选", "default": None},
+        "limit": {**_INT, "description": "最大返回数量", "default": 20},
+        "offset": {**_INT, "description": "偏移量", "default": 0},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "backups.restore": ("恢复指定备份", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "backup_id": {**_STR, "description": "备份 ID"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── pq ──
+    "pq.list_connections": ("列出 Power Query 连接", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "pq.list_queries": ("列出 Power Query 查询", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "pq.get_code": ("获取 Power Query 代码", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "query_name": {**_STR, "description": "查询名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "pq.update_query": ("更新 Power Query", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "query_name": {**_STR, "description": "查询名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "pq.refresh": ("刷新 Power Query", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "query_name": {**_STR, "description": "查询名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    # ── audit ──
+    "audit.list_operations": ("列出操作审计记录", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "tool_name": {"type": "string", "description": "工具名称筛选", "default": None},
+        "success_only": {**_BOOL, "description": "仅显示成功操作", "default": False},
+        "limit": {**_INT, "description": "最大返回数量", "default": 20},
+        "offset": {**_INT, "description": "偏移量", "default": 0},
+        "operation_id": {"type": "string", "description": "操作 ID", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
 }
 
 
@@ -244,6 +680,86 @@ def create_host_runtime_client(settings: HostRuntimeSettings) -> Any:
     return client
 
 
+def _build_typed_handler(
+    runtime_client: Any,
+    tool_name: str,
+    runtime_method: str,
+    param_defs: dict[str, dict],
+):
+    """
+    动态生成带类型注解的 handler 函数。
+
+    FastMCP 根据函数签名中的类型注解自动推断 inputSchema。
+    如果用 def handler(**kwargs)，FastMCP 只会看到一个 kwargs 参数，
+    导致 MCP 协议层无法暴露具体参数名，WorkBuddy 桥接也无法正确传参。
+
+    通过 exec 动态构建函数签名，确保每个工具都有明确的参数类型声明。
+    """
+    if not param_defs:
+        # 无参数工具（如 server.health）
+        def handler() -> dict:
+            return call_runtime(runtime_client, tool_name=tool_name, method=runtime_method, params={})
+        return handler
+
+    # JSON Schema type → Python 类型
+    _type_map = {
+        "string": "str",
+        "boolean": "bool",
+        "integer": "int",
+        "number": "float",
+        "object": "dict",
+        "array": "list",
+    }
+
+    # 将参数分为必填和可选，确保必填在前（Python 语法要求）
+    required_params = [(n, d) for n, d in param_defs.items() if "default" not in d]
+    optional_params = [(n, d) for n, d in param_defs.items() if "default" in d]
+
+    params_code = []
+    for pname, pdef in required_params + optional_params:
+        py_type = _type_map.get(pdef.get("type", "string"), "str")
+        if "default" in pdef:
+            default_val = pdef["default"]
+            if isinstance(default_val, str):
+                default_repr = f'"{default_val}"'
+            elif isinstance(default_val, bool):
+                default_repr = "True" if default_val else "False"
+            elif default_val is None:
+                default_repr = "None"
+            else:
+                default_repr = repr(default_val)
+            params_code.append(f"{pname}: {py_type} = {default_repr}")
+        else:
+            params_code.append(f"{pname}: {py_type}")
+
+    params_str = ", ".join(params_code)
+    result_items = ", ".join(f'"{p}": {p}' for p in param_defs.keys())
+
+    # 通过 exec 构建带正确签名和注解的函数
+    func_code = f"""def _handler({params_str}) -> dict:
+    return {{"_tool": "{tool_name}", "_params": {{{result_items}}}}}"""
+    ns: dict[str, Any] = {"__builtins__": __builtins__}
+    exec(func_code, ns)
+
+    # 取出动态函数，绑定 runtime_client 和 runtime_method 为闭包变量
+    _inner = ns["_handler"]
+    client_ref = runtime_client
+    method_ref = runtime_method
+    tool_ref = tool_name
+
+    def handler(**kwargs) -> dict:
+        return call_runtime(client_ref, tool_name=tool_ref, method=method_ref, params=kwargs)
+
+    # 复制动态函数的签名和注解到实际 handler，让 FastMCP 能正确推断 inputSchema
+    import inspect as _inspect
+    handler.__signature__ = _inspect.signature(_inner)  # type: ignore[attr-defined]
+    handler.__annotations__ = _inner.__annotations__  # type: ignore[attr-defined]
+    handler.__defaults__ = _inner.__defaults__  # type: ignore[attr-defined]
+    handler.__kwdefaults__ = _inner.__kwdefaults__  # type: ignore[attr-defined]
+
+    return handler
+
+
 def register_tools_for_profile(
     mcp: FastMCP,
     runtime: Any,
@@ -270,15 +786,20 @@ def register_tools_for_profile(
 
     check_tool_budget(len(enabled_tools), profile_info)
 
-    def make_tool_handler(runtime_client, tool, method):
-        def handler(**kwargs):
-            return call_runtime(runtime_client, tool_name=tool, method=method, params=kwargs)
-        return handler
-
     for tool_name in enabled_tools:
         runtime_method = TOOL_MANIFEST_MAP.get(tool_name, tool_name)
-        handler = make_tool_handler(runtime, tool_name, runtime_method)
-        mcp.tool(name=tool_name)(handler)
+        schema_entry = TOOL_PARAM_SCHEMA.get(tool_name)
+        desc = schema_entry[0] if schema_entry else tool_name
+        param_defs = schema_entry[1] if schema_entry else {}
+
+        # 动态生成带类型注解的 handler，让 FastMCP 从函数签名推断正确的 inputSchema
+        handler = _build_typed_handler(runtime, tool_name, runtime_method, param_defs)
+
+        mcp.tool(
+            name=tool_name,
+            description=desc,
+            annotations=ToolAnnotations(readOnlyHint=False),
+        )(handler)
 
 
 def main(argv: list[str] | None = None) -> int:

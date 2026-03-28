@@ -24,14 +24,42 @@ uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile basic
 
 ### 3. 常用 Profile
 
-| Profile | 适用场景 | 启用内容 |
-| --- | --- | --- |
-| `basic_edit` | 默认推荐 | workbook / sheet / range / names / server |
-| `calc_format` | 公式与格式处理 | `basic_edit` + formula / format |
-| `automation` | VBA 自动化与恢复 | workbook / names / vba / recovery |
-| `data_workflow` | Power Query / 数据流 | workbook / names / pq / analysis |
-| `reporting` | 报表与分析 | workbook / names / report / analysis |
-| `all` | 开发调试 | 全部 bundle |
+| Profile | 适用场景 | 工具数 | 启用的 Bundle | 包含的工具域 |
+| --- | --- | --- | --- | --- |
+| `basic_edit` | 日常编辑（推荐新手） | 31 | foundation + edit | server / workbook / names / sheet / range |
+| `calc_format` | 公式与格式处理 | 42 | foundation + edit + calc_format | 上述 + formula / format |
+| `automation` | VBA 自动化与恢复 | 36 | foundation + automation + recovery | server / workbook / names / vba / recovery |
+| `data_workflow` | Power Query / 数据流 | 28 | foundation + data + analysis | server / workbook / names / pq / analysis |
+| `reporting` | 报表与分析 | 28 | foundation + report + analysis | server / workbook / names / chart / pivot / model / audit |
+| `all` | 全量开发调试 | **64** | 全部 9 个 bundle | 全部 12 个域 |
+
+> **如何选择 Profile？**
+>
+> - 只做**读写单元格、管理工作表** → `basic_edit` 够用
+> - 需要**写公式、设格式** → `calc_format`
+> - 需要**VBA 宏操作**（同步模块、执行宏等）→ `automation` 或 `all`
+> - 需要**图表、数据透视表** → `reporting`（chart/pivot/model 当前为 experimental）
+> - **不确定或开发调试** → 直接用 `all`，加载全部 64 个工具
+>
+> **切换 Profile 方法**：修改 MCP 客户端配置中的 `--profile` 参数值，然后重启 MCP 服务。
+> 例如将 `"basic_edit"` 改为 `"all"` 即可启用所有工具。
+
+#### 各 Profile 工具域详细对照
+
+| 工具域 | basic_edit | calc_format | automation | data_workflow | reporting | all |
+| --- | :---: | :---: | :---: | :---: | :---: | :---: |
+| server (2) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| workbook (6) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| names (4) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| sheet (8) | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| range (11) | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| formula (4) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| format (7) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| vba (8) | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| recovery (8) | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| analysis (1) | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
+| pq (5) | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| chart/pivot/model | ❌ | ❌ | ❌ | ❌ | ⚠️ 空 | ⚠️ 空 |
 
 ### 4. 如果只想单独装备某些功能
 
@@ -89,9 +117,10 @@ uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile all -
         "--config",
         "D:/Tools/AI/ExcelForge/excel-mcp.yaml",
         "--profile",
-        "basic_edit"
+        "all"
       ],
-      "cwd": "D:/Tools/AI/ExcelForge"
+      "cwd": "D:/Tools/AI/ExcelForge",
+      "_comment": "将 --profile 改为所需 profile（basic_edit / calc_format / automation / all 等），然后重启 MCP 服务"
     }
   }
 }

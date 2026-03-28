@@ -48,7 +48,8 @@ class SheetApi:
         reference_sheet = str(params.get("reference_sheet", "")).strip() or None
         client_request_id = params.get("client_request_id")
 
-        if position in {"first", "last"}:
+        if position in {"first", "last", "after"}:
+            # first/last/after（无 reference_sheet）走 sheet_service
             return self._ctx.run_operation(
                 method_name="sheet.create",
                 actor_id=actor_id,
@@ -70,7 +71,7 @@ class SheetApi:
         if position not in {"before", "after"} or not reference_sheet:
             raise ExcelForgeError(
                 ErrorCode.E400_INVALID_ARGUMENT,
-                "position must be first/last, or before/after with reference_sheet",
+                "position must be first/last/after, or before/after with reference_sheet",
             )
 
         def op() -> dict[str, Any]:

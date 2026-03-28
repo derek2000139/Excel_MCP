@@ -201,8 +201,11 @@ class SheetService:
                 raise ExcelForgeError(ErrorCode.E409_SHEET_NAME_EXISTS, f"Sheet already exists: {sheet_name}")
             if position == "first":
                 ws = wb.Sheets.Add(Before:=wb.Sheets(1))
-            else:
+            elif position == "last":
                 ws = wb.Sheets.Add(After:=wb.Sheets(wb.Sheets.Count))
+            else:
+                # after_active: Excel 原生行为，在当前激活表之后插入
+                ws = wb.Sheets.Add(After:=wb.ActiveSheet)
             ws.Name = sheet_name
             return {
                 "workbook_id": workbook_id,

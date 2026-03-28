@@ -78,6 +78,7 @@ domains:
       - workbook.create_file
       - workbook.save_file
       - workbook.close_file
+      - workbook.list_open
       - workbook.inspect
     maturity: stable
     risk_level: low
@@ -86,6 +87,8 @@ domains:
     tools:
       - names.inspect
       - names.manage
+      - names.create
+      - names.delete
     maturity: stable
     risk_level: low
 
@@ -93,7 +96,9 @@ domains:
     tools:
       - sheet.create_sheet
       - sheet.rename_sheet
+      - sheet.preview_delete
       - sheet.delete_sheet
+      - sheet.inspect_structure
       - sheet.set_auto_filter
       - sheet.get_conditional_formats
       - sheet.get_data_validations
@@ -112,12 +117,16 @@ domains:
       - range.delete_columns
       - range.sort_data
       - range.merge
+      - range.unmerge
     maturity: stable
     risk_level: low
 
   formula:
     tools:
-      - formula.evaluate
+      - formula.fill_range
+      - formula.set_single
+      - formula.get_dependencies
+      - formula.repair
     maturity: stable
     risk_level: low
 
@@ -142,10 +151,12 @@ domains:
   vba:
     tools:
       - vba.inspect_project
+      - vba.get_module_code
       - vba.scan_code
       - vba.sync_module
       - vba.remove_module
       - vba.execute
+      - vba.execute_inline
       - vba.compile
     maturity: stable
     risk_level: medium
@@ -153,8 +164,13 @@ domains:
   recovery:
     tools:
       - rollback.manage
-      - backups.manage
+      - rollback.preview_snapshot
+      - rollback.restore_snapshot
       - snapshot.manage
+      - snapshot.get_stats
+      - snapshot.cleanup
+      - backups.manage
+      - backups.restore
     maturity: stable
     risk_level: medium
 

@@ -63,8 +63,12 @@ def resolve_runtime_identity(
 
 
 def product_protocol(scope: str, instance_name: str) -> str:
-    base = f"{PRODUCT_PROTOCOL}.{scope}"
-    if instance_name != "default":
+    base = f"{PRODUCT_PROTOCOL}"
+    if scope != "default":
+        base = f"{base}.{scope}"
+        if instance_name != "default":
+            base = f"{base}.{instance_name}"
+    elif instance_name != "default":
         base = f"{base}.{instance_name}"
     return base
 

@@ -40,6 +40,8 @@ class ServerApi:
         data_dir = runtime_config.data_dir
         pipe_name = runtime_config.pipe_name
         instance_id = self._compute_runtime_instance_id(pipe_name, data_dir)
+        scope = self._get_runtime_scope()
+        instance_name = self._get_runtime_instance_name()
 
         return {
             "success": True,
@@ -50,6 +52,8 @@ class ServerApi:
                 "runtime_instance_id": instance_id,
                 "runtime_endpoint": pipe_name,
                 "runtime_pid": self._get_runtime_pid(data_dir),
+                "runtime_scope": scope,
+                "runtime_instance_name": instance_name,
                 "excel": {
                     "ready": excel_ready,
                     "version": ready_status["version"],
@@ -68,6 +72,14 @@ class ServerApi:
         raw = f"ExcelForge:default:default:{pipe_name}:{data_dir}"
         short_hash = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
         return f"rt_{short_hash}"
+
+    def _get_runtime_scope(self) -> str:
+        import os
+        return os.environ.get("EXCELFORGE_RUNTIME_SCOPE", "default")
+
+    def _get_runtime_instance_name(self) -> str:
+        import os
+        return os.environ.get("EXCELFORGE_RUNTIME_INSTANCE", "default")
 
     def _get_runtime_pid(self, data_dir: str) -> int | None:
         import json

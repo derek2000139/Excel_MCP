@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from excelforge.models.error_models import ErrorCode, ExcelForgeError
 from excelforge.runtime.handle_ownership import ensure_workbook_id_owned, is_foreign_workbook_id
 from excelforge.utils.ids import parse_workbook_generation
+
+logger = logging.getLogger(__name__)
+
+
+class WorkbookHandleStaleError(ExcelForgeError):
+    """工作簿句柄已失效，需要重新打开。"""
+    def __init__(self, workbook_id: str):
+        super().__init__(
+            ErrorCode.E410_WORKBOOK_STALE,
+            f"Workbook handle is stale (workbook_id={workbook_id}). Please reopen the workbook."
+        )
+        self.workbook_id = workbook_id
 
 
 @dataclass
@@ -91,3 +105,81 @@ class WorkbookRegistry:
             return False
         generation = parse_workbook_generation(workbook_id)
         return generation is not None and generation != self._generation
+
+    def clear_all(self) -> int:
+        """清空所有注册的工作簿句柄。返回被清除的数量。"""
+        count = len(self._items)
+        self._items.clear()
+        logger.info(f"[Registry] Cleared all {count} handle(s)")
+        return count
+
+    def validate_handle(self, workbook_id: str) -> bool:
+        """
+        通过访问 COM 对象验证句柄是否有效。
+
+        Returns:
+            True 如果句柄有效，False 如果失效
+        """
+        handle = self._items.get(workbook_id)
+        if handle is None:
+            return False
+        try:
+            _ = handle.workbook_obj.Name
+            return True
+        except Exception:
+            logger.warning(f"[Registry] Stale handle detected: {workbook_id}")
+            return False
+
+    def cleanup_stale_handles(self) -> int:
+        """
+        批量扫描并移除所有失效的句柄。
+
+        Returns:
+            被移除的失效句柄数量
+        """
+        stale_ids = []
+        for workbook_id in list(self._items.keys()):
+            if not self.validate_handle(workbook_id):
+                stale_ids.append(workbook_id)
+
+        for workbook_id in stale_ids:
+            self._items.pop(workbook_id, None)
+
+        if stale_ids:
+            logger.info(f"[Registry] Cleaned {len(stale_ids)} stale handle(s)")
+        return len(stale_ids)
+
+    def get_workbook_count(self) -> dict[str, int]:
+        """
+        返回注册统计信息。
+
+        Returns:
+            包含 registry_count, excel_count, valid_count, stale_count 的字典
+        """
+        excel_count = 0
+        valid_count = 0
+        stale_count = 0
+
+        for handle in self._items.values():
+            excel_count += 1
+            if self.validate_handle(handle.workbook_id):
+                valid_count += 1
+            else:
+                stale_count += 1
+
+        return {
+            "registry_count": len(self._items),
+            "excel_count": excel_count,
+            "valid_count": valid_count,
+            "stale_count": stale_count,
+        }
+
+    def get_workbook(self, workbook_id: str) -> Any:
+        """
+        获取工作簿 COM 对象，失效时自动移除并抛出友好错误。
+        """
+        handle = self.require(workbook_id)
+        if not self.validate_handle(workbook_id):
+            self.remove(workbook_id)
+            raise WorkbookHandleStaleError(workbook_id)
+        return handle.workbook_obj

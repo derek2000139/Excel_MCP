@@ -273,3 +273,113 @@ class RuntimeClientManager:
             "lock_pid": lock.pid if lock else None,
             "process_alive": is_process_alive(lock.pid) if lock else False,
         }
+
+    def get_runtime_pid(self) -> int | None:
+        """获取当前 Runtime 进程的 PID。"""
+        lock = read_runtime_lock_from_dir(str(self._identity.data_dir))
+        if lock is not None and is_process_alive(lock.pid):
+            return lock.pid
+        return None
+
+    def kill_runtime(self) -> bool:
+        """
+        终止 Runtime 进程及其所有子进程，并清理关联的 Excel 进程。
+
+        Returns:
+            True 如果成功终止
+        """
+        import logging
+        import os
+        logger = logging.getLogger(__name__)
+
+        pid = self.get_runtime_pid()
+        killed_something = False
+
+        if pid is not None:
+            try:
+                import psutil
+                proc = psutil.Process(pid)
+                children = proc.children(recursive=True)
+                for child in children:
+                    try:
+                        child.kill()
+                        logger.debug(f"[RuntimeClient] Killed child PID={child.pid}")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                proc.kill()
+                proc.wait(timeout=5)
+                logger.info(f"[RuntimeClient] Killed Runtime PID={pid}")
+                killed_something = True
+            except psutil.NoSuchProcess:
+                logger.info(f"[RuntimeClient] Runtime PID={pid} already gone")
+            except Exception as e:
+                logger.warning(f"[RuntimeClient] Failed to kill Runtime PID={pid}: {e}")
+
+        self._cleanup_all_excel_processes()
+
+        if killed_something:
+            self._force_cleanup_runtimes()
+
+        return True
+
+    def _cleanup_all_excel_processes(self) -> None:
+        """清理所有 Excel 进程。"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            import psutil
+            excel_procs = []
+            for proc in psutil.process_iter(['pid', 'name']):
+                name = (proc.info['name'] or '').upper()
+                if 'EXCEL' in name:
+                    excel_procs.append(proc.info['pid'])
+
+            if excel_procs:
+                logger.warning(f"[RuntimeClient] Cleaning up {len(excel_procs)} Excel process(es): {excel_procs}")
+                for e_pid in excel_procs:
+                    try:
+                        p = psutil.Process(e_pid)
+                        p.kill()
+                        p.wait(timeout=3)
+                        logger.debug(f"[RuntimeClient] Killed Excel PID={e_pid}")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+        except Exception as e:
+            logger.warning(f"[RuntimeClient] Excel cleanup failed: {e}")
+            import os
+            os.system("taskkill /F /IM EXCEL.EXE >nul 2>&1")
+
+    def _force_cleanup_runtimes(self) -> None:
+        """强制清理所有 Runtime 相关进程（最后的兜底方案）。"""
+        import logging
+        import os
+        import subprocess
+        logger = logging.getLogger(__name__)
+
+        try:
+            import psutil
+            target_pids = []
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    name = (proc.info['name'] or '').lower()
+                    cmdline = proc.info.get('cmdline') or []
+                    cmdline_str = ' '.join(cmdline).lower()
+                    if 'python' in name and 'excelforge' in cmdline_str and 'runtime' in cmdline_str:
+                        target_pids.append(proc.info['pid'])
+                except Exception:
+                    continue
+
+            if target_pids:
+                logger.warning(f"[RuntimeClient] Force killing {len(target_pids)} Runtime process(es): {target_pids}")
+                for t_pid in target_pids:
+                    try:
+                        p = psutil.Process(t_pid)
+                        p.kill()
+                        p.wait(timeout=3)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.warning(f"[RuntimeClient] Force cleanup failed: {e}")
+
+

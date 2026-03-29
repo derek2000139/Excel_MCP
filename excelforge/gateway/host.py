@@ -11,6 +11,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from excelforge.gateway.config import GatewayConfig, load_gateway_config
+from excelforge.gateway.logging_setup import setup_logging, get_current_log_file
 from excelforge.gateway.profile_resolver import BundleRegistry, ProfileResolutionError, ProfileResolver
 from excelforge.gateway.runtime_client_manager import get_global_runtime_client
 from excelforge.gateway.runtime_identity import (
@@ -550,6 +551,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail immediately if profile not found",
     )
     parser.add_argument(
+        "--restart-runtime",
+        choices=["always", "if-stale", "never"],
+        default="if-stale",
+        help="Runtime restart strategy: always=每次启动都重启; if-stale=超时则重启; never=从不重启（生产）",
+    )
+    parser.add_argument(
+        "--runtime-stale-seconds",
+        type=int,
+        default=300,
+        help="if-stale 模式下，Runtime 多久没有健康更新算过期（默认 300 秒）",
+    )
+    parser.add_argument(
         "--list-profiles",
         action="store_true",
         help="List available profiles and exit",
@@ -575,6 +588,106 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print resolved Runtime endpoint on startup",
     )
     return parser
+
+
+def _ensure_runtime_fresh(args, settings: HostRuntimeSettings) -> None:
+    """
+    确保 Runtime 是最新的。根据 --restart-runtime 策略决定是否重启。
+
+    always:   无条件杀掉旧 Runtime，重新启动
+    if-stale: 检查 last_health_ping，超时则重启
+    never:    什么都不做（生产模式）
+    """
+    import logging
+    import time
+    import datetime
+    logger = logging.getLogger(__name__)
+
+    strategy = args.restart_runtime
+    logger.info(f"[Startup] Runtime restart strategy: {strategy}")
+
+    if strategy == "never":
+        logger.info("[Startup] Skipping Runtime restart check")
+        return
+
+    runtime_mgr = get_global_runtime_client(
+        identity=settings.identity,
+        auto_start=settings.auto_start,
+        connect_timeout=settings.connect_timeout,
+        call_timeout=settings.call_timeout,
+        runtime_config_path=settings.runtime_config_path,
+    )
+
+    if strategy == "always":
+        logger.info("[Startup] Forcing Runtime restart (--restart-runtime=always)")
+        _kill_and_restart_runtime(runtime_mgr, settings)
+        return
+
+    if strategy == "if-stale":
+        stale_seconds = args.runtime_stale_seconds
+        try:
+            status = runtime_mgr.call("server.status", {})
+            last_ping = status.get("meta", {}).get("last_health_ping") if isinstance(status, dict) else None
+            if last_ping:
+                if isinstance(last_ping, str):
+                    ping_time = datetime.datetime.fromisoformat(last_ping.replace("Z", "+00:00"))
+                    age = (datetime.datetime.now(datetime.timezone.utc) - ping_time).total_seconds()
+                else:
+                    age = 0
+                logger.info(f"[Startup] Runtime last ping: {age:.0f}s ago")
+                if age > stale_seconds:
+                    logger.warning(f"[Startup] Runtime is stale (>{stale_seconds}s), restarting")
+                    _kill_and_restart_runtime(runtime_mgr, settings)
+                else:
+                    logger.info("[Startup] Runtime is fresh, reusing")
+            else:
+                logger.info("[Startup] No Runtime last ping, starting fresh")
+                _kill_and_restart_runtime(runtime_mgr, settings)
+        except Exception as e:
+            logger.warning(f"[Startup] Cannot check Runtime status: {e}, starting fresh")
+            try:
+                _kill_and_restart_runtime(runtime_mgr, settings)
+            except Exception:
+                pass
+
+
+def _kill_and_restart_runtime(runtime_mgr, settings: HostRuntimeSettings) -> None:
+    """终止旧 Runtime 并启动新的。"""
+    import logging
+    import time
+    logger = logging.getLogger(__name__)
+
+    logger.info("[Startup] Killing old Runtime...")
+    try:
+        runtime_mgr.kill_runtime()
+    except Exception as e:
+        logger.warning(f"[Startup] Failed to kill old Runtime: {e}")
+
+    time.sleep(1)
+
+    logger.info("[Startup] Starting new Runtime...")
+    try:
+        runtime_mgr._start_runtime_process()
+        _wait_for_runtime_ready(runtime_mgr, timeout=30)
+        logger.info("[Startup] New Runtime is ready")
+    except Exception as e:
+        logger.error(f"[Startup] Failed to start Runtime: {e}")
+        raise
+
+
+def _wait_for_runtime_ready(runtime_mgr, timeout: int = 30):
+    """等待新 Runtime 就绪。"""
+    import time
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            status = runtime_mgr.call("server.status", {})
+            if status:
+                return
+        except Exception:
+            pass
+        time.sleep(1)
+    raise TimeoutError(f"Runtime not ready after {timeout}s")
 
 
 def list_profiles_and_exit(profiles_path: Path | None = None) -> None:
@@ -808,6 +921,9 @@ def main(argv: list[str] | None = None) -> int:
     profiles_path = Path(__file__).parent / "profiles.yaml"
     bundles_path = Path(__file__).parent / "bundles.yaml"
 
+    log_file = setup_logging()
+    print(f"[ExcelForge] Log file: {log_file}", file=sys.stderr)
+
     if args.list_profiles:
         list_profiles_and_exit(profiles_path)
         return 0
@@ -816,16 +932,15 @@ def main(argv: list[str] | None = None) -> int:
         list_bundles_and_exit(bundles_path)
         return 0
 
-    if args.strict_profile:
-        resolver = ProfileResolver(profiles_path)
-        try:
-            resolver.resolve(args.profile)
-        except ProfileResolutionError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
-
     try:
         settings = resolve_host_runtime_settings(args)
+    except Exception as exc:
+        print(f"Error resolving settings: {exc}", file=sys.stderr)
+        return 1
+
+    _ensure_runtime_fresh(args, settings)
+
+    try:
         runtime = create_host_runtime_client(settings)
     except Exception as exc:
         print(f"Error creating Runtime client: {exc}", file=sys.stderr)

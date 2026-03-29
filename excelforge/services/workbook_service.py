@@ -115,6 +115,14 @@ class WorkbookService:
             )
             ctx.registry.add(handle)
 
+            try:
+                app = ctx.app_manager._app
+                if app and not app.Visible:
+                    app.Visible = True
+                    app.ScreenUpdating = True
+            except Exception:
+                pass
+
             return {
                 "workbook_id": workbook_id,
                 "workbook_name": str(workbook.Name),
@@ -289,6 +297,7 @@ class WorkbookService:
             workbook.Close(SaveChanges=False)
             ctx.registry.remove(workbook_id)
             invalidated = self._snapshot_service.expire_workbook_snapshots(workbook_id)
+            self._quit_if_no_workbooks(ctx)
             return {
                 "workbook_id": workbook_id,
                 "closed": True,
@@ -301,6 +310,23 @@ class WorkbookService:
             timeout_seconds=self._config.limits.operation_timeout_seconds,
             requires_excel=True,
         )
+
+    def _quit_if_no_workbooks(self, ctx: Any) -> None:
+        """如果所有工作簿都已关闭，则退出 Excel。"""
+        try:
+            count_info = ctx.registry.get_workbook_count()
+            registry_count = count_info.get("registry", 0)
+            if registry_count == 0:
+                app = ctx.app_manager._app
+                if app is not None:
+                    try:
+                        app.Visible = False
+                        app.Quit()
+                        ctx.app_manager.invalidate()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def create_file(self, file_path: str, sheet_names: list[str], overwrite: bool) -> dict[str, Any]:
         normalized = normalize_allowed_path(file_path, [Path(p) for p in self._config.paths.allowed_roots], set(self._config.paths.allowed_extensions))

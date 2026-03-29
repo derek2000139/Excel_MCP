@@ -117,10 +117,12 @@ uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile all -
         "--config",
         "YOUR_PROJECT_PATH/excel-mcp.yaml",
         "--profile",
-        "all"
+        "all",
+        "--restart-runtime",
+        "always"
       ],
       "cwd": "YOUR_PROJECT_PATH",
-      "_comment": "将 --profile 改为所需 profile（basic_edit / calc_format / automation / all 等），然后重启 MCP 服务"
+      "_comment": "将 --profile 改为所需 profile（basic_edit / calc_format / automation / all 等），--restart-runtime 改为 always（开发）或 if-stale（生产）"
     }
   }
 }
@@ -152,6 +154,29 @@ uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile basic
 # 启动 Runtime（仅调试 Runtime 时需要）
 uv run python -m excelforge.runtime --config runtime-config.yaml
 ```
+
+## 日志文件
+
+ExcelForge 会将日志写入 `~/.excelforge/logs/excelforge_YYYYMMDD.log`，包含：
+- Gateway 和 Runtime 的所有操作日志
+- 工具调用记录（TOOL CALL / TOOL OK / TOOL FAIL）
+- Excel 进程创建和销毁记录
+- 错误和警告信息
+
+查看日志：
+```powershell
+# Windows
+Get-Content "$env:USERPROFILE\.excelforge\logs\excelforge_20260329.log" | Select-Object -Last 50
+
+# Linux/Mac
+cat ~/.excelforge/logs/excelforge_20260329.log | tail -50
+```
+
+日志文件会自动清理，保留最近 30 天的记录。
+
+## 依赖说明
+
+- `psutil>=5.9.0`：用于 Excel 进程管理和僵尸进程清理（Windows/Linux/Mac 跨平台）
 
 ## 架构说明
 

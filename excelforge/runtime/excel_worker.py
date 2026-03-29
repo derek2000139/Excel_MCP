@@ -12,6 +12,7 @@ from excelforge.models.error_models import ErrorCode, ExcelForgeError
 from excelforge.runtime.excel_app import ExcelAppManager
 from excelforge.runtime.retry_policy import run_with_com_retry
 from excelforge.runtime.workbook_registry import WorkbookRegistry
+from excelforge.runtime.worker_manager import ExcelWorkerManager
 from excelforge.utils.ids import compute_runtime_fingerprint
 from excelforge.utils.timestamps import utc_now_rfc3339
 
@@ -57,6 +58,7 @@ class ExcelWorker:
         self._warmup_started = False
         self._warmup_error: Exception | None = None
         self._excel_version: str | None = None
+        self._worker_manager = ExcelWorkerManager()
 
     @property
     def state(self) -> str:
@@ -95,6 +97,15 @@ class ExcelWorker:
             self._hard_stopped = False
             self._thread = threading.Thread(target=self._run_loop, name="excel-sta-worker", daemon=True)
             self._thread.start()
+
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            cleaned = self._worker_manager.scan_and_cleanup_orphans()
+            if cleaned > 0:
+                logger.info(f"[ExcelWorker] Cleaned {cleaned} orphan(s) on startup")
+        except Exception as e:
+            logger.warning(f"[ExcelWorker] Startup orphan scan failed: {e}")
 
     def submit(
         self,
@@ -237,28 +248,57 @@ class ExcelWorker:
         return self._context.app_manager.ping()
 
     def _recover_excel_instance(self) -> bool:
+        def _create_new_app():
+            self._context.app_manager._app = None
+            app = self._context.app_manager.ensure_app()
+            try:
+                from excelforge.runtime.com_utils import get_excel_pid
+                pid = get_excel_pid(app)
+                self._worker_manager.register_worker_pid(pid)
+            except Exception:
+                pass
+            return app
+
+        def _pre_rebuild_hook():
+            self._context.registry.clear_all()
+            self._worker_manager.clear_registration()
+            import logging
+            logging.getLogger(__name__).warning(
+                f"[ExcelWorker] === REBUILD START === rebuild_count={self._rebuild_count}"
+            )
+
+        import logging
+        logger = logging.getLogger(__name__)
+
         self._invalidate_excel_session()
         self._warmup_error = None
         self._ready_event.clear()
         attempts = int(self._config.excel.max_rebuild_attempts)
-        for _ in range(attempts):
+
+        for attempt in range(attempts):
             try:
-                app = self._context.app_manager.ensure_app()
+                app = self._worker_manager.rebuild_worker(
+                    create_fn=_create_new_app,
+                    pre_rebuild_hook=_pre_rebuild_hook
+                )
                 self._excel_version = app.Version
                 self._warmup_error = None
             except Exception as exc:
                 self._warmup_error = exc
+                logger.error(f"[ExcelWorker] Rebuild attempt {attempt + 1} failed: {exc}")
                 continue
             self._rebuild_count += 1
             self._last_rebuild_at = utc_now_rfc3339()
             self._hard_stopped = False
             self._set_state("running")
             self._ready_event.set()
+            logger.info(f"[ExcelWorker] === REBUILD COMPLETE === count={self._rebuild_count}")
             return True
 
         self._hard_stopped = True
         self._set_state("stopped")
         self._ready_event.set()
+        logger.error("[ExcelWorker] All rebuild attempts failed")
         return False
 
     def _invalidate_excel_session(self) -> None:

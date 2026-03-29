@@ -3,7 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from excelforge.models.error_models import ErrorCode, ExcelForgeError
-from excelforge.models.sheet_models import SheetDeleteSheetRequest, SheetInspectStructureRequest, SheetSetAutoFilterRequest
+from excelforge.models.sheet_models import (
+    SheetCopyRequest,
+    SheetDeleteSheetRequest,
+    SheetHideRequest,
+    SheetInspectStructureRequest,
+    SheetMoveRequest,
+    SheetSetAutoFilterRequest,
+    SheetUnhideRequest,
+)
 from excelforge.runtime_api.context import RuntimeApiContext
 
 
@@ -118,6 +126,99 @@ class SheetApi:
                 "reference_sheet": reference_sheet,
             },
             default_workbook_id=workbook_id,
+        )
+
+    def copy(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
+        req = SheetCopyRequest(
+            workbook_id=params.get("workbook_id", ""),
+            source_sheet=params.get("source_sheet", ""),
+            new_sheet_name=params.get("new_sheet_name"),
+            insert_before=params.get("insert_before"),
+            client_request_id=params.get("client_request_id"),
+        )
+        return self._ctx.run_operation(
+            method_name="sheet.copy",
+            actor_id=actor_id,
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: self._ctx.services.sheet_service.copy_sheet(
+                workbook_id=req.workbook_id,
+                source_sheet=req.source_sheet,
+                new_sheet_name=req.new_sheet_name,
+                insert_before=req.insert_before,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "source_sheet": req.source_sheet,
+                "new_sheet_name": req.new_sheet_name,
+                "insert_before": req.insert_before,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+
+    def move(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
+        req = SheetMoveRequest(
+            workbook_id=params.get("workbook_id", ""),
+            sheet_name=params.get("sheet_name", ""),
+            target_position=params.get("target_position", "last"),
+            client_request_id=params.get("client_request_id"),
+        )
+        return self._ctx.run_operation(
+            method_name="sheet.move",
+            actor_id=actor_id,
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: self._ctx.services.sheet_service.move_sheet(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+                target_position=req.target_position,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+                "target_position": req.target_position,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+
+    def hide(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
+        req = SheetHideRequest(
+            workbook_id=params.get("workbook_id", ""),
+            sheet_name=params.get("sheet_name", ""),
+            client_request_id=params.get("client_request_id"),
+        )
+        return self._ctx.run_operation(
+            method_name="sheet.hide",
+            actor_id=actor_id,
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: self._ctx.services.sheet_service.hide_sheet(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+
+    def unhide(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
+        req = SheetUnhideRequest(
+            workbook_id=params.get("workbook_id", ""),
+            sheet_name=params.get("sheet_name", ""),
+            client_request_id=params.get("client_request_id"),
+        )
+        return self._ctx.run_operation(
+            method_name="sheet.unhide",
+            actor_id=actor_id,
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: self._ctx.services.sheet_service.unhide_sheet(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+            },
+            default_workbook_id=req.workbook_id,
         )
 
     def rename(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:

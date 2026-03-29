@@ -65,6 +65,12 @@ class ServerApi:
                     "warmup_started": ready_status["warmup_started"],
                     "warmup_error": ready_status["warmup_error"],
                 },
+                "backend": {
+                    "version": "2.4.0",
+                    "supports_batch": False,
+                    "supports_artifact_export": False,
+                    "execution_mode": "excel",
+                },
                 "worker": worker_metrics,
                 "open_workbooks": open_workbooks,
             },

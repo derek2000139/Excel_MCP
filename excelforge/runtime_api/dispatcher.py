@@ -125,6 +125,12 @@ class RuntimeApiDispatcher:
             "workbook.list_links": workbook_ops.list_links,
             "workbook.export_pdf": workbook_ops.export_pdf,
             "sheet.export_csv": workbook_ops.export_csv,
+            "sheet.copy": sheet.copy,
+            "sheet.move": sheet.move,
+            "sheet.hide": sheet.hide,
+            "sheet.unhide": sheet.unhide,
+            "range.find_replace": rng.find_replace,
+            "range.autofit": rng.autofit,
         }
 
     def dispatch(self, method: str, params: dict[str, Any], actor_id: str) -> dict[str, Any]:

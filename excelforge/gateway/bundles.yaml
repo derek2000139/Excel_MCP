@@ -134,6 +134,10 @@ domains:
       - sheet.set_auto_filter
       - sheet.get_conditional_formats
       - sheet.get_data_validations
+      - sheet.copy
+      - sheet.move
+      - sheet.hide
+      - sheet.unhide
     maturity: stable
     risk_level: low
 
@@ -155,6 +159,8 @@ domains:
       - range.sort_data
       - range.merge
       - range.unmerge
+      - range.find_replace
+      - range.autofit
     maturity: stable
     risk_level: low
 

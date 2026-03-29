@@ -17,6 +17,9 @@ class ToolManifest:
     maturity: str = "stable"
     risk_level: str = "low"
     description: str = ""
+    execution_mode: str = "sync"
+    backend_requirement: str = "excel"
+    supports_batch: bool = False
 
 
 class ToolManifestRegistry:
@@ -103,4 +106,7 @@ class ToolManifestRegistry:
             "maturity": manifest.maturity,
             "risk_level": manifest.risk_level,
             "description": manifest.description,
+            "execution_mode": manifest.execution_mode,
+            "backend_requirement": manifest.backend_requirement,
+            "supports_batch": manifest.supports_batch,
         }

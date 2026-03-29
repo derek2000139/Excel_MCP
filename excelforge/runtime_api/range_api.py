@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from excelforge.models.range_models import (
+    RangeAutofitRequest,
     RangeClearContentsRequest,
     RangeCopyRangeRequest,
     RangeDeleteColumnsRequest,
     RangeDeleteRowsRequest,
+    RangeFindReplaceRequest,
     RangeInsertColumnsRequest,
     RangeInsertRowsRequest,
     RangeMergeCellsRequest,
@@ -303,5 +305,66 @@ class RangeApi:
                 range_address=req.range,
             ),
             args_summary={"workbook_id": req.workbook_id, "sheet_name": req.sheet_name, "range": req.range},
+            default_workbook_id=req.workbook_id,
+        )
+
+    def find_replace(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
+        req = RangeFindReplaceRequest(
+            workbook_id=params.get("workbook_id", ""),
+            find_what=params.get("find_what", ""),
+            replace_with=params.get("replace_with"),
+            sheet_name=params.get("sheet_name"),
+            range_address=params.get("range_address"),
+            match_case=params.get("match_case", False),
+            match_entire_cell=params.get("match_entire_cell", False),
+            client_request_id=params.get("client_request_id"),
+        )
+        return self._ctx.run_operation(
+            method_name="range.find_replace",
+            actor_id=actor_id,
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: self._ctx.services.range_service.find_replace(
+                workbook_id=req.workbook_id,
+                find_what=req.find_what,
+                replace_with=req.replace_with,
+                sheet_name=req.sheet_name,
+                range_address=req.range_address,
+                match_case=req.match_case,
+                match_entire_cell=req.match_entire_cell,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "find_what": req.find_what,
+                "replace_with": req.replace_with,
+                "sheet_name": req.sheet_name,
+                "range_address": req.range_address,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+
+    def autofit(self, params: dict[str, Any], actor_id: str) -> dict[str, Any]:
+        req = RangeAutofitRequest(
+            workbook_id=params.get("workbook_id", ""),
+            sheet_name=params.get("sheet_name"),
+            range_address=params.get("range_address"),
+            autofit_type=params.get("autofit_type", "columns"),
+            client_request_id=params.get("client_request_id"),
+        )
+        return self._ctx.run_operation(
+            method_name="range.autofit",
+            actor_id=actor_id,
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: self._ctx.services.range_service.autofit(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+                range_address=req.range_address,
+                autofit_type=req.autofit_type,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+                "range_address": req.range_address,
+                "autofit_type": req.autofit_type,
+            },
             default_workbook_id=req.workbook_id,
         )

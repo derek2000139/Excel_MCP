@@ -544,6 +544,176 @@ class SheetService:
             requires_excel=True,
         )
 
+    def copy_sheet(
+        self,
+        *,
+        workbook_id: str,
+        source_sheet: str,
+        new_sheet_name: str | None = None,
+        insert_before: str | None = None,
+    ) -> dict[str, Any]:
+        def op(ctx: Any) -> dict[str, Any]:
+            handle = self._require_workbook(ctx, workbook_id)
+            wb = handle.workbook_obj
+            self._ensure_workbook_writable(wb)
+
+            try:
+                src_ws = wb.Worksheets(source_sheet)
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E404_SHEET_NOT_FOUND, f"Sheet not found: {source_sheet}") from exc
+
+            desired_name = new_sheet_name if new_sheet_name else f"{source_sheet}_copy"
+            safe_name = self._ensure_valid_sheet_name(desired_name, wb)
+
+            existing_count = wb.Worksheets.Count
+            src_index = src_ws.Index
+
+            try:
+                if insert_before:
+                    dest = wb.Worksheets(insert_before)
+                    src_ws.Copy(Before:=dest)
+                else:
+                    src_ws.Copy(After:=src_ws)
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E500_INTERNAL, f"Failed to copy sheet: {exc}") from exc
+
+            new_count = wb.Worksheets.Count
+            if new_count <= existing_count:
+                raise ExcelForgeError(ErrorCode.E500_INTERNAL, "Copy did not create new sheet")
+
+            if insert_before:
+                new_index = wb.Worksheets(insert_before).Index
+            else:
+                new_index = src_index + 1
+                if new_index > wb.Worksheets.Count:
+                    new_index = wb.Worksheets.Count
+
+            new_ws = wb.Worksheets(new_index)
+            excel_name = str(new_ws.Name)
+
+            return {
+                "new_sheet_name": excel_name,
+                "source_sheet": source_sheet,
+            }
+
+        return self._worker.submit(
+            op,
+            timeout_seconds=self._config.limits.operation_timeout_seconds,
+            requires_excel=True,
+        )
+
+    def move_sheet(
+        self,
+        *,
+        workbook_id: str,
+        sheet_name: str,
+        target_position: str = "last",
+    ) -> dict[str, Any]:
+        def op(ctx: Any) -> dict[str, Any]:
+            handle = self._require_workbook(ctx, workbook_id)
+            wb = handle.workbook_obj
+            self._ensure_workbook_writable(wb)
+
+            try:
+                ws = wb.Worksheets(sheet_name)
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E404_SHEET_NOT_FOUND, f"Sheet not found: {sheet_name}") from exc
+
+            try:
+                if target_position == "first":
+                    ws.Move(Before=wb.Worksheets(1))
+                elif target_position == "last":
+                    ws.Move(After=wb.Worksheets(wb.Worksheets.Count))
+                else:
+                    ws.Move(Before=wb.Worksheets(target_position))
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E500_INTERNAL, f"Failed to move sheet: {exc}") from exc
+
+            return {
+                "sheet_name": sheet_name,
+                "new_position": target_position,
+            }
+
+        return self._worker.submit(
+            op,
+            timeout_seconds=self._config.limits.operation_timeout_seconds,
+            requires_excel=True,
+        )
+
+    def hide_sheet(self, *, workbook_id: str, sheet_name: str) -> dict[str, Any]:
+        def op(ctx: Any) -> dict[str, Any]:
+            handle = self._require_workbook(ctx, workbook_id)
+            wb = handle.workbook_obj
+            self._ensure_workbook_writable(wb)
+
+            try:
+                ws = wb.Worksheets(sheet_name)
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E404_SHEET_NOT_FOUND, f"Sheet not found: {sheet_name}") from exc
+
+            try:
+                ws.Visible = False
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E500_INTERNAL, f"Failed to hide sheet: {exc}") from exc
+
+            return {
+                "sheet_name": sheet_name,
+                "visible": "hidden",
+            }
+
+        return self._worker.submit(
+            op,
+            timeout_seconds=self._config.limits.operation_timeout_seconds,
+            requires_excel=True,
+        )
+
+    def unhide_sheet(self, *, workbook_id: str, sheet_name: str) -> dict[str, Any]:
+        def op(ctx: Any) -> dict[str, Any]:
+            handle = self._require_workbook(ctx, workbook_id)
+            wb = handle.workbook_obj
+            self._ensure_workbook_writable(wb)
+
+            try:
+                ws = wb.Worksheets(sheet_name)
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E404_SHEET_NOT_FOUND, f"Sheet not found: {sheet_name}") from exc
+
+            try:
+                ws.Visible = True
+            except Exception as exc:
+                raise ExcelForgeError(ErrorCode.E500_INTERNAL, f"Failed to unhide sheet: {exc}") from exc
+
+            return {
+                "sheet_name": sheet_name,
+                "visible": "visible",
+            }
+
+        return self._worker.submit(
+            op,
+            timeout_seconds=self._config.limits.operation_timeout_seconds,
+            requires_excel=True,
+        )
+
+    @staticmethod
+    def _ensure_valid_sheet_name(name: str, workbook: Any) -> str:
+        safe_chars = []
+        for c in name:
+            if c in INVALID_SHEET_NAME_CHARS:
+                safe_chars.append("_")
+            else:
+                safe_chars.append(c)
+        safe_name = "".join(safe_chars)
+        if not safe_name:
+            safe_name = "Sheet"
+
+        counter = 1
+        final_name = safe_name
+        existing = [str(ws.Name) for ws in workbook.Worksheets]
+        while final_name in existing:
+            counter += 1
+            final_name = f"{safe_name}_{counter}"
+        return final_name
+
     @staticmethod
     def _column_letter_to_index(col: str) -> int:
         result = 0

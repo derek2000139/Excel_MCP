@@ -684,6 +684,127 @@ class RangeService:
         else:
             raise ExcelForgeError(ErrorCode.E400_INVALID_ARGUMENT, f"Invalid action: {action}")
 
+    def find_replace(
+        self,
+        *,
+        workbook_id: str,
+        find_what: str,
+        replace_with: str | None = None,
+        sheet_name: str | None = None,
+        range_address: str | None = None,
+        match_case: bool = False,
+        match_entire_cell: bool = False,
+    ) -> dict[str, Any]:
+        def op(ctx: Any) -> dict[str, Any]:
+            handle, ws = self._require_sheet(ctx, workbook_id, sheet_name)
+            wb = handle.workbook_obj
+
+            if range_address:
+                search_range = ws.Range(range_address)
+            else:
+                search_range = ws.UsedRange
+                if search_range is None:
+                    search_range = ws.Cells
+
+            look_at: int | None = None
+            if match_entire_cell:
+                look_at = 2
+            else:
+                look_at = 1
+
+            match_case_int = 1 if match_case else 0
+
+            if replace_with is not None:
+                try:
+                    search_range.Replace(
+                        What=find_what,
+                        Replacement=replace_with,
+                        LookAt=look_at,
+                        MatchCase=match_case_int,
+                    )
+                except Exception as exc:
+                    raise ExcelForgeError(ErrorCode.E500_INTERNAL, f"Replace failed: {exc}") from exc
+
+                matched_cells: list[str] = []
+                return {
+                    "matches_found": 1,
+                    "replacements_made": 1,
+                    "matched_cells": matched_cells,
+                }
+            else:
+                first_found: str | None = None
+                try:
+                    found = search_range.Find(
+                        What=find_what,
+                        LookAt=look_at,
+                        MatchCase=match_case_int,
+                    )
+                    if found is not None:
+                        first_found = found.Address
+                except Exception:
+                    pass
+
+                return {
+                    "matches_found": 1 if first_found else 0,
+                    "replacements_made": None,
+                    "matched_cells": [first_found] if first_found else [],
+                }
+
+        return self._worker.submit(
+            op,
+            timeout_seconds=self._config.limits.operation_timeout_seconds,
+            requires_excel=True,
+        )
+
+    def autofit(
+        self,
+        *,
+        workbook_id: str,
+        sheet_name: str | None = None,
+        range_address: str | None = None,
+        autofit_type: str = "columns",
+    ) -> dict[str, Any]:
+        def op(ctx: Any) -> dict[str, Any]:
+            _, ws = self._require_sheet(ctx, workbook_id, sheet_name)
+
+            if range_address:
+                target = ws.Range(range_address)
+            else:
+                target = ws.UsedRange
+                if target is None:
+                    target = ws.Columns
+
+            if autofit_type == "rows":
+                try:
+                    target.Rows.AutoFit()
+                except Exception:
+                    pass
+                rows_adjusted = target.Rows.Count
+                return {
+                    "sheet_name": str(ws.Name),
+                    "autofit_type": "rows",
+                    "columns_adjusted": None,
+                    "rows_adjusted": rows_adjusted,
+                }
+            else:
+                try:
+                    target.Columns.AutoFit()
+                except Exception:
+                    pass
+                cols_adjusted = target.Columns.Count
+                return {
+                    "sheet_name": str(ws.Name),
+                    "autofit_type": "columns",
+                    "columns_adjusted": cols_adjusted,
+                    "rows_adjusted": None,
+                }
+
+        return self._worker.submit(
+            op,
+            timeout_seconds=self._config.limits.operation_timeout_seconds,
+            requires_excel=True,
+        )
+
     @staticmethod
     def _column_letter_to_index(column: str) -> int:
         result = 0

@@ -107,6 +107,12 @@ TOOL_MANIFEST_MAP: dict[str, str] = {
     "workbook.list_links": "workbook.list_links",
     "workbook.export_pdf": "workbook.export_pdf",
     "sheet.export_csv": "sheet.export_csv",
+    "sheet.copy": "sheet.copy",
+    "sheet.move": "sheet.move",
+    "sheet.hide": "sheet.hide",
+    "sheet.unhide": "sheet.unhide",
+    "range.find_replace": "range.find_replace",
+    "range.autofit": "range.autofit",
 }
 
 # ── 工具参数 JSON Schema 注册表 ─────────────────────
@@ -652,6 +658,46 @@ TOOL_PARAM_SCHEMA: dict[str, tuple[str, dict[str, dict]]] = {
         "file_path": {**_STR, "description": "CSV 保存路径"},
         "delimiter": {"type": "string", "description": "分隔符", "default": ","},
         "include_header": {**_BOOL, "description": "是否包含表头", "default": True},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.copy": ("复制工作表", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "source_sheet": {**_STR, "description": "源工作表名称"},
+        "new_sheet_name": {"type": "string", "description": "新工作表名称（可选，默认 {原名}_copy）", "default": None},
+        "insert_before": {"type": "string", "description": "插入到指定工作表之前（可选）", "default": None},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.move": ("移动工作表", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "target_position": {"type": "string", "description": "目标位置: first/last 或工作表名", "default": "last"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.hide": ("隐藏工作表", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "sheet.unhide": ("取消隐藏", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.find_replace": ("查找替换", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "find_what": {**_STR, "description": "查找内容"},
+        "replace_with": {"type": "string", "description": "替换内容（不填则仅查找）", "default": None},
+        "sheet_name": {"type": "string", "description": "工作表名称（可选，默认当前）", "default": None},
+        "range_address": {"type": "string", "description": "范围地址（可选，默认整表）", "default": None},
+        "match_case": {**_BOOL, "description": "区分大小写", "default": False},
+        "match_entire_cell": {**_BOOL, "description": "完全匹配单元格", "default": False},
+        "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
+    }),
+    "range.autofit": ("自动调整列/行宽", {
+        "workbook_id": {**_STR, "description": "工作簿 ID"},
+        "sheet_name": {"type": "string", "description": "工作表名称（可选，默认当前）", "default": None},
+        "range_address": {"type": "string", "description": "范围地址（可选，默认整表）", "default": None},
+        "autofit_type": {"type": "string", "description": "调整类型: columns/rows", "default": "columns"},
         "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
     }),
 }

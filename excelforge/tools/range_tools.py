@@ -5,8 +5,10 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from excelforge.models.range_models import (
+    RangeAutofitRequest,
     RangeClearContentsRequest,
     RangeCopyRangeRequest,
+    RangeFindReplaceRequest,
     RangeManageMergeRequest,
     RangeMergeCellsRequest,
     RangeReadValuesRequest,
@@ -448,3 +450,85 @@ def register_range_tools(mcp: FastMCP, ctx: Any, registry: ToolRegistry) -> None
         return envelope.model_dump(mode="json")
 
     registry.add("range.manage_merge", "range_tools", "range")
+
+    @mcp.tool(name="range.find_replace")
+    def range_find_replace(
+        workbook_id: str,
+        find_what: str,
+        replace_with: str | None = None,
+        sheet_name: str | None = None,
+        range_address: str | None = None,
+        match_case: bool = False,
+        match_entire_cell: bool = False,
+        client_request_id: str = "",
+    ) -> dict:
+        req = RangeFindReplaceRequest(
+            workbook_id=workbook_id,
+            find_what=find_what,
+            replace_with=replace_with,
+            sheet_name=sheet_name,
+            range_address=range_address,
+            match_case=match_case,
+            match_entire_cell=match_entire_cell,
+            client_request_id=client_request_id,
+        )
+        envelope = ctx.operation_service.run(
+            tool_name="range.find_replace",
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: ctx.range_service.find_replace(
+                workbook_id=req.workbook_id,
+                find_what=req.find_what,
+                replace_with=req.replace_with,
+                sheet_name=req.sheet_name,
+                range_address=req.range_address,
+                match_case=req.match_case,
+                match_entire_cell=req.match_entire_cell,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "find_what": req.find_what,
+                "replace_with": req.replace_with,
+                "sheet_name": req.sheet_name,
+                "range_address": req.range_address,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+        return envelope.model_dump(mode="json")
+
+    registry.add("range.find_replace", "range_tools", "range")
+
+    @mcp.tool(name="range.autofit")
+    def range_autofit(
+        workbook_id: str,
+        sheet_name: str | None = None,
+        range_address: str | None = None,
+        autofit_type: str = "columns",
+        client_request_id: str = "",
+    ) -> dict:
+        req = RangeAutofitRequest(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            range_address=range_address,
+            autofit_type=autofit_type,
+            client_request_id=client_request_id,
+        )
+        envelope = ctx.operation_service.run(
+            tool_name="range.autofit",
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: ctx.range_service.autofit(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+                range_address=req.range_address,
+                autofit_type=req.autofit_type,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+                "range_address": req.range_address,
+                "autofit_type": req.autofit_type,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+        return envelope.model_dump(mode="json")
+
+    registry.add("range.autofit", "range_tools", "range")

@@ -164,3 +164,46 @@ class SheetDataValidationItem(StrictModel):
     show_input_message: bool
     prompt_title: str | None
     prompt: str | None
+
+
+class SheetCopyRequest(ClientRequestMixin):
+    workbook_id: str
+    source_sheet: str
+    new_sheet_name: str | None = None
+    insert_before: str | None = None
+
+
+class SheetCopyData(StrictModel):
+    new_sheet_name: str
+    source_sheet: str
+
+
+class SheetMoveRequest(ClientRequestMixin):
+    workbook_id: str
+    sheet_name: str
+    target_position: str = "last"
+
+
+class SheetMoveData(StrictModel):
+    sheet_name: str
+    new_position: str
+
+
+class SheetHideRequest(ClientRequestMixin):
+    workbook_id: str
+    sheet_name: str
+
+
+class SheetHideData(StrictModel):
+    sheet_name: str
+    visible: str = "hidden"
+
+
+class SheetUnhideRequest(ClientRequestMixin):
+    workbook_id: str
+    sheet_name: str
+
+
+class SheetUnhideData(StrictModel):
+    sheet_name: str
+    visible: str = "visible"

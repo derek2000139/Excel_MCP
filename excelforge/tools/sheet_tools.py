@@ -5,12 +5,16 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from excelforge.models.sheet_models import (
+    SheetCopyRequest,
     SheetCreateRequest,
     SheetDeleteSheetRequest,
     SheetGetRulesRequest,
+    SheetHideRequest,
     SheetInspectStructureRequest,
+    SheetMoveRequest,
     SheetRenameRequest,
     SheetSetAutoFilterRequest,
+    SheetUnhideRequest,
 )
 from excelforge.tools.registry import ToolRegistry
 
@@ -210,3 +214,127 @@ def register_sheet_tools(mcp: FastMCP, ctx: Any, registry: ToolRegistry) -> None
         return envelope.model_dump(mode="json")
 
     registry.add("sheet.get_rules", "sheet_tools", "sheet")
+
+    @mcp.tool(name="sheet.copy")
+    def sheet_copy(
+        workbook_id: str,
+        source_sheet: str,
+        new_sheet_name: str | None = None,
+        insert_before: str | None = None,
+        client_request_id: str = "",
+    ) -> dict:
+        req = SheetCopyRequest(
+            workbook_id=workbook_id,
+            source_sheet=source_sheet,
+            new_sheet_name=new_sheet_name,
+            insert_before=insert_before,
+            client_request_id=client_request_id,
+        )
+        envelope = ctx.operation_service.run(
+            tool_name="sheet.copy",
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: ctx.sheet_service.copy_sheet(
+                workbook_id=req.workbook_id,
+                source_sheet=req.source_sheet,
+                new_sheet_name=req.new_sheet_name,
+                insert_before=req.insert_before,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "source_sheet": req.source_sheet,
+                "new_sheet_name": req.new_sheet_name,
+                "insert_before": req.insert_before,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+        return envelope.model_dump(mode="json")
+
+    registry.add("sheet.copy", "sheet_tools", "sheet")
+
+    @mcp.tool(name="sheet.move")
+    def sheet_move(
+        workbook_id: str,
+        sheet_name: str,
+        target_position: str = "last",
+        client_request_id: str = "",
+    ) -> dict:
+        req = SheetMoveRequest(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            target_position=target_position,
+            client_request_id=client_request_id,
+        )
+        envelope = ctx.operation_service.run(
+            tool_name="sheet.move",
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: ctx.sheet_service.move_sheet(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+                target_position=req.target_position,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+                "target_position": req.target_position,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+        return envelope.model_dump(mode="json")
+
+    registry.add("sheet.move", "sheet_tools", "sheet")
+
+    @mcp.tool(name="sheet.hide")
+    def sheet_hide(
+        workbook_id: str,
+        sheet_name: str,
+        client_request_id: str = "",
+    ) -> dict:
+        req = SheetHideRequest(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            client_request_id=client_request_id,
+        )
+        envelope = ctx.operation_service.run(
+            tool_name="sheet.hide",
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: ctx.sheet_service.hide_sheet(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+        return envelope.model_dump(mode="json")
+
+    registry.add("sheet.hide", "sheet_tools", "sheet")
+
+    @mcp.tool(name="sheet.unhide")
+    def sheet_unhide(
+        workbook_id: str,
+        sheet_name: str,
+        client_request_id: str = "",
+    ) -> dict:
+        req = SheetUnhideRequest(
+            workbook_id=workbook_id,
+            sheet_name=sheet_name,
+            client_request_id=client_request_id,
+        )
+        envelope = ctx.operation_service.run(
+            tool_name="sheet.unhide",
+            client_request_id=req.client_request_id,
+            operation_fn=lambda: ctx.sheet_service.unhide_sheet(
+                workbook_id=req.workbook_id,
+                sheet_name=req.sheet_name,
+            ),
+            args_summary={
+                "workbook_id": req.workbook_id,
+                "sheet_name": req.sheet_name,
+            },
+            default_workbook_id=req.workbook_id,
+        )
+        return envelope.model_dump(mode="json")
+
+    registry.add("sheet.unhide", "sheet_tools", "sheet")

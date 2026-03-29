@@ -231,3 +231,34 @@ class RangeManageMergeData(StrictModel):
     merge_areas: int | None = None
     snapshot_id: str | None = None
     backup_id: str | None = None
+
+
+class RangeFindReplaceRequest(ClientRequestMixin):
+    workbook_id: str
+    sheet_name: str | None = None
+    find_what: str
+    replace_with: str | None = None
+    range_address: str | None = None
+    match_case: bool = False
+    match_entire_cell: bool = False
+    find_format: str | None = None
+
+
+class RangeFindReplaceData(StrictModel):
+    matches_found: int
+    replacements_made: int | None = None
+    matched_cells: list[str]
+
+
+class RangeAutofitRequest(ClientRequestMixin):
+    workbook_id: str
+    sheet_name: str | None = None
+    range_address: str | None = None
+    autofit_type: str = "columns"
+
+
+class RangeAutofitData(StrictModel):
+    sheet_name: str
+    autofit_type: str
+    columns_adjusted: int | None = None
+    rows_adjusted: int | None = None

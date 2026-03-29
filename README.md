@@ -86,7 +86,7 @@ uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile basic
         "--profile", "data_workflow",
         "--restart-runtime", "if-stale"
       ],
-      "cwd": "YOUR_PROJECT_PATH"
+      "cwd": "YOUR_PROJECT_PATH/"
     }
   }
 }

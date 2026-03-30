@@ -72,14 +72,14 @@ def register_range_tools(mcp: FastMCP, ctx: Any, registry: ToolRegistry) -> None
     def range_write_values(
         workbook_id: str,
         sheet_name: str,
-        start_cell: str,
+        range: str,
         values: list[list[str | int | float | bool | None]],
         client_request_id: str = "",
     ) -> dict:
         req = RangeWriteValuesRequest(
             workbook_id=workbook_id,
             sheet_name=sheet_name,
-            start_cell=start_cell,
+            range=range,
             values=values,
             client_request_id=client_request_id,
         )
@@ -89,13 +89,13 @@ def register_range_tools(mcp: FastMCP, ctx: Any, registry: ToolRegistry) -> None
             operation_fn=lambda: ctx.range_service.write_values(
                 workbook_id=req.workbook_id,
                 sheet_name=req.sheet_name,
-                start_cell=req.start_cell,
+                range=req.range,
                 values=req.values,
             ),
             args_summary={
                 "workbook_id": req.workbook_id,
                 "sheet_name": req.sheet_name,
-                "start_cell": req.start_cell,
+                "range": req.range,
                 "rows": len(req.values),
                 "cols": len(req.values[0]) if req.values else 0,
             },

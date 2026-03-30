@@ -64,7 +64,7 @@ class RangeApi:
         req = RangeWriteValuesRequest(
             workbook_id=params.get("workbook_id", ""),
             sheet_name=params.get("sheet_name"),
-            start_cell=params.get("start_cell") or params.get("range", ""),
+            range=params.get("range") or params.get("start_cell") or "",
             values=params.get("values") or [],
             client_request_id=params.get("client_request_id"),
         )
@@ -75,10 +75,10 @@ class RangeApi:
             operation_fn=lambda: self._ctx.services.range_service.write_values(
                 workbook_id=req.workbook_id,
                 sheet_name=req.sheet_name,
-                start_cell=req.start_cell,
+                range=req.range,
                 values=req.values,
             ),
-            args_summary={"workbook_id": req.workbook_id, "sheet_name": req.sheet_name, "start_cell": req.start_cell},
+            args_summary={"workbook_id": req.workbook_id, "sheet_name": req.sheet_name, "range": req.range},
             default_workbook_id=req.workbook_id,
         )
 

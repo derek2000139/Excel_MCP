@@ -12,12 +12,15 @@ from mcp.types import ToolAnnotations
 
 from excelforge.gateway.config import GatewayConfig, load_gateway_config
 from excelforge.gateway.logging_setup import setup_logging, get_current_log_file
+from excelforge.gateway.package_executor import PackageExecutor
+from excelforge.gateway.batch_runner import BatchRunner, BatchConfig
 from excelforge.gateway.profile_resolver import BundleRegistry, ProfileResolutionError, ProfileResolver
 from excelforge.gateway.runtime_client_manager import get_global_runtime_client
 from excelforge.gateway.runtime_identity import (
     RuntimeIdentity,
     resolve_runtime_identity,
 )
+from excelforge.gateway.tool_manifest_registry import ToolManifestRegistry
 from excelforge.gateway.utils import call_runtime
 
 
@@ -113,6 +116,37 @@ TOOL_MANIFEST_MAP: dict[str, str] = {
     "sheet.unhide": "sheet.unhide",
     "range.find_replace": "range.find_replace",
     "range.autofit": "range.autofit",
+    # ── package (artifact_export) ──
+    "package.inspect_manifest": "package.inspect_manifest",
+    "package.list_parts": "package.list_parts",
+    "package.get_part_xml": "package.get_part_xml",
+    "package.extract_part": "package.extract_part",
+    "package.list_media": "package.list_media",
+    "package.list_custom_xml": "package.list_custom_xml",
+    "package.detect_features": "package.detect_features",
+    "package.export_manifest": "package.export_manifest",
+    # ── package (artifact_patch) ──
+    "package.clone_with_patch": "package.clone_with_patch",
+    "package.replace_shared_strings": "package.replace_shared_strings",
+    "package.patch_defined_names": "package.patch_defined_names",
+    "package.update_docprops": "package.update_docprops",
+    "package.merge_template_parts": "package.merge_template_parts",
+    "package.remove_external_links": "package.remove_external_links",
+    # ── batch ──
+    "package.compare_workbooks": "package.compare_workbooks",
+    "package.batch_extract_parts": "package.batch_extract_parts",
+    "package.batch_transform": "package.batch_transform",
+    "package.batch_compare": "package.batch_compare",
+    # ── chart ──
+    "chart.list_charts": "chart.list_charts",
+    "chart.inspect": "chart.inspect",
+    "chart.list_series": "chart.list_series",
+    "chart.export_spec": "chart.export_spec",
+    # ── conditional_format ──
+    "format.apply_conditional_rule": "format.apply_conditional_rule",
+    "format.update_conditional_rule": "format.update_conditional_rule",
+    "format.copy_conditional_rules": "format.copy_conditional_rules",
+    "format.clear_conditional_rules": "format.clear_conditional_rules",
 }
 
 # ── 工具参数 JSON Schema 注册表 ─────────────────────
@@ -255,7 +289,7 @@ TOOL_PARAM_SCHEMA: dict[str, tuple[str, dict[str, dict]]] = {
     "range.write_values": ("写入单元格值", {
         "workbook_id": {**_STR, "description": "工作簿 ID"},
         "sheet_name": {**_STR, "description": "工作表名称（可选，默认激活表）", "default": None},
-        "start_cell": {**_STR, "description": "起始单元格（如 A1）"},
+        "range": {**_STR, "description": "起始单元格（如 A1），写入范围由 values 数组维度自动决定"},
         "values": {"type": "array", "items": {"type": "object"}, "description": "要写入的值（二维数组）"},
         "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
     }),
@@ -700,6 +734,149 @@ TOOL_PARAM_SCHEMA: dict[str, tuple[str, dict[str, dict]]] = {
         "autofit_type": {"type": "string", "description": "调整类型: columns/rows", "default": "columns"},
         "client_request_id": {"type": "string", "description": "客户端请求 ID（可选）", "default": None},
     }),
+    # ── package (artifact_export) ──
+    "package.inspect_manifest": ("检查 Excel 文件包结构", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径（.xlsx/.xlsm/.xltx/.xltm）"},
+    }),
+    "package.list_parts": ("列出文件包中的所有部件", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "content_type": {"type": "string", "description": "按内容类型过滤（可选，如 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet）", "default": None},
+    }),
+    "package.get_part_xml": ("获取指定部件的 XML 内容", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "part_path": {**_STR, "description": "部件路径（如 xl/workbook.xml）"},
+        "pretty_print": {**_BOOL, "description": "是否格式化输出", "default": True},
+    }),
+    "package.extract_part": ("提取部件内容到文件", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "part_path": {**_STR, "description": "部件路径（如 xl/sharedStrings.xml）"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选，默认输出到当前目录）", "default": None},
+    }),
+    "package.list_media": ("列出文件包中的媒体资源", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+    }),
+    "package.list_custom_xml": ("列出自定义 XML 部件", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+    }),
+    "package.detect_features": ("检测文件特性", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+    }),
+    "package.export_manifest": ("导出文件包清单报告", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "format": {"type": "string", "description": "输出格式: json/text", "default": "json"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+    }),
+    # ── package (artifact_patch) ──
+    "package.clone_with_patch": ("克隆文件并应用补丁", {
+        "file_path": {**_STR, "description": "源 Excel 文件的绝对路径"},
+        "patches": {"type": "array", "description": "补丁列表，每项包含 part_path/action/content", "default": []},
+        "output_path": {"type": "string", "description": "输出文件路径（可选，自动生成）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "package.replace_shared_strings": ("批量替换共享字符串", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "replacements": {"type": "object", "description": "替换映射 {旧字符串: 新字符串}"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "package.patch_defined_names": ("修补命名范围", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "names": {"type": "array", "description": "命名范围列表，每项包含 name/refers_to/action", "default": []},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "package.update_docprops": ("更新文档属性", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "properties": {"type": "object", "description": "要更新的属性键值对"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "package.merge_template_parts": ("合并模板部件", {
+        "file_path": {**_STR, "description": "目标 Excel 文件的绝对路径"},
+        "template_path": {**_STR, "description": "模板 Excel 文件的绝对路径"},
+        "parts": {"type": "array", "description": "要合并的部件列表（如 styles, theme, customXml）", "default": []},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "package.remove_external_links": ("删除外部链接", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    # ── batch ──
+    "package.compare_workbooks": ("比较两个工作簿的差异", {
+        "file_path1": {**_STR, "description": "第一个 Excel 文件的绝对路径"},
+        "file_path2": {**_STR, "description": "第二个 Excel 文件的绝对路径"},
+        "output_path": {"type": "string", "description": "输出报告路径（可选）", "default": None},
+    }),
+    "package.batch_extract_parts": ("批量提取多个文件的部件", {
+        "file_paths": {"type": "array", "description": "Excel 文件路径列表"},
+        "part_path": {**_STR, "description": "要提取的部件路径"},
+        "output_dir": {"type": "string", "description": "输出目录（可选）", "default": None},
+    }),
+    "package.batch_transform": ("批量变换文件", {
+        "file_paths": {"type": "array", "description": "Excel 文件路径列表"},
+        "patches": {"type": "array", "description": "补丁列表"},
+        "output_dir": {"type": "string", "description": "输出目录（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "package.batch_compare": ("批量比较文件集", {
+        "file_paths": {"type": "array", "description": "Excel 文件路径列表"},
+        "reference_file": {"type": "string", "description": "参考文件路径（可选）", "default": None},
+        "output_path": {"type": "string", "description": "输出报告路径（可选）", "default": None},
+    }),
+    # ── chart ──
+    "chart.list_charts": ("列出工作簿中的图表", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "sheet_name": {"type": "string", "description": "工作表名称（可选，限制在该工作表内查找）", "default": None},
+    }),
+    "chart.inspect": ("检查图表详情", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "chart_id": {"type": "string", "description": "图表 ID 或名称"},
+    }),
+    "chart.list_series": ("列出图表的数据系列", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "chart_id": {"type": "string", "description": "图表 ID 或名称"},
+    }),
+    "chart.export_spec": ("导出图表规格为 JSON", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "chart_id": {"type": "string", "description": "图表 ID 或名称"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+    }),
+    # ── conditional_format ──
+    "format.apply_conditional_rule": ("应用条件格式规则", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {**_STR, "description": "应用范围（如 A1:D10）"},
+        "rule_type": {"type": "string", "description": "规则类型: cell_value/formula/color_scale/data_bar/icon_set"},
+        "formula": {"type": "string", "description": "公式或条件表达式"},
+        "format": {"type": "object", "description": "格式定义（可选）", "default": None},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "format.update_conditional_rule": ("更新条件格式规则", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "rule_id": {"type": "string", "description": "规则 ID"},
+        "updates": {"type": "object", "description": "要更新的字段"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "format.copy_conditional_rules": ("复制条件格式规则", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "source_range": {**_STR, "description": "源范围"},
+        "target_range": {**_STR, "description": "目标范围"},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
+    "format.clear_conditional_rules": ("清除条件格式规则", {
+        "file_path": {**_STR, "description": "Excel 文件的绝对路径"},
+        "sheet_name": {**_STR, "description": "工作表名称"},
+        "range": {"type": "string", "description": "清除范围（可选，不填则清除全部）", "default": None},
+        "output_path": {"type": "string", "description": "输出文件路径（可选）", "default": None},
+        "dry_run": {**_BOOL, "description": "是否仅预览不执行", "default": False},
+    }),
 }
 
 
@@ -798,16 +975,32 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Output profile/bundle resolution process and exit",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Enable dry-run mode (preview only, no actual execution)",
+    )
+    parser.add_argument(
+        "--clone-output-dir",
+        type=str,
+        default=None,
+        help="Directory for clone output mode (preserves original files)",
+    )
     return parser
 
 
-def _ensure_runtime_fresh(args, settings: HostRuntimeSettings) -> None:
+def _ensure_runtime_fresh(args, settings: HostRuntimeSettings, enabled_tools: list[str] | None = None) -> None:
     """
     确保 Runtime 是最新的。根据 --restart-runtime 策略决定是否重启。
 
     always:   无条件杀掉旧 Runtime，重新启动
     if-stale: 检查 last_health_ping，超时则重启
     never:    什么都不做（生产模式）
+    
+    Args:
+        args: 命令行参数
+        settings: Runtime 设置
+        enabled_tools: 当前启用的工具列表，用于判断是否需要启动 Runtime
     """
     import logging
     import time
@@ -820,6 +1013,17 @@ def _ensure_runtime_fresh(args, settings: HostRuntimeSettings) -> None:
     if strategy == "never":
         logger.info("[Startup] Skipping Runtime restart check")
         return
+
+    # 检查是否有需要 Excel COM 的工具
+    if enabled_tools is not None:
+        manifest_registry = ToolManifestRegistry()
+        tools_requiring_excel = set(manifest_registry.get_tools_requiring_excel())
+        has_excel_tools = bool(set(enabled_tools) & tools_requiring_excel)
+        
+        if not has_excel_tools:
+            logger.info("[Startup] No tools requiring Excel COM, skipping Runtime startup")
+            return
+        logger.info("[Startup] Found tools requiring Excel COM, ensuring Runtime is ready")
 
     runtime_mgr = get_global_runtime_client(
         identity=settings.identity,
@@ -1154,7 +1358,7 @@ def resolve_host_runtime_settings(args: argparse.Namespace) -> HostRuntimeSettin
     config_path = _resolve_gateway_config_path(args.config)
     gateway_config: GatewayConfig | None = None
     runtime_data_dir: str | None = None
-    runtime_config_path = str(Path("runtime-config.yaml").resolve())
+    runtime_config_path: str | None = None
     auto_start = True
     connect_timeout = 10
     call_timeout = 30
@@ -1201,6 +1405,9 @@ def _build_typed_handler(
     tool_name: str,
     runtime_method: str,
     param_defs: dict[str, dict],
+    execution_mode: str = "runtime",
+    package_executor: PackageExecutor | None = None,
+    batch_runner: BatchRunner | None = None,
 ):
     """
     动态生成带类型注解的 handler 函数。
@@ -1210,12 +1417,32 @@ def _build_typed_handler(
     导致 MCP 协议层无法暴露具体参数名，WorkBuddy 桥接也无法正确传参。
 
     通过 exec 动态构建函数签名，确保每个工具都有明确的参数类型声明。
+    
+    Args:
+        runtime_client: Runtime 客户端实例
+        tool_name: 工具名称
+        runtime_method: Runtime 方法名
+        param_defs: 参数定义字典
+        execution_mode: 执行模式 (runtime / file_package / batch)
+        package_executor: PackageExecutor 实例（file_package 模式使用）
+        batch_runner: BatchRunner 实例（batch 模式使用）
+    
+    Returns:
+        带类型注解的 handler 函数
     """
     if not param_defs:
         # 无参数工具（如 server.health）
-        def handler() -> dict:
-            return call_runtime(runtime_client, tool_name=tool_name, method=runtime_method, params={})
-        return handler
+        def no_param_handler() -> dict:
+            return _dispatch_to_executor(
+                runtime_client=runtime_client,
+                tool_name=tool_name,
+                method=runtime_method,
+                params={},
+                execution_mode=execution_mode,
+                package_executor=package_executor,
+                batch_runner=batch_runner,
+            )
+        return no_param_handler
 
     # JSON Schema type → Python 类型
     _type_map = {
@@ -1257,14 +1484,25 @@ def _build_typed_handler(
     ns: dict[str, Any] = {"__builtins__": __builtins__}
     exec(func_code, ns)
 
-    # 取出动态函数，绑定 runtime_client 和 runtime_method 为闭包变量
+    # 取出动态函数，绑定执行器为闭包变量
     _inner = ns["_handler"]
     client_ref = runtime_client
     method_ref = runtime_method
     tool_ref = tool_name
+    mode_ref = execution_mode
+    pkg_exec_ref = package_executor
+    batch_ref = batch_runner
 
     def handler(**kwargs) -> dict:
-        return call_runtime(client_ref, tool_name=tool_ref, method=method_ref, params=kwargs)
+        return _dispatch_to_executor(
+            runtime_client=client_ref,
+            tool_name=tool_ref,
+            method=method_ref,
+            params=kwargs,
+            execution_mode=mode_ref,
+            package_executor=pkg_exec_ref,
+            batch_runner=batch_ref,
+        )
 
     # 复制动态函数的签名和注解到实际 handler，让 FastMCP 能正确推断 inputSchema
     import inspect as _inspect
@@ -1276,6 +1514,114 @@ def _build_typed_handler(
     return handler
 
 
+def _dispatch_to_executor(
+    runtime_client: Any,
+    tool_name: str,
+    method: str,
+    params: dict[str, Any],
+    execution_mode: str,
+    package_executor: PackageExecutor | None,
+    batch_runner: BatchRunner | None,
+) -> dict[str, Any]:
+    """
+    根据执行模式分发到不同的执行器。
+    
+    Args:
+        runtime_client: Runtime 客户端实例
+        tool_name: 工具名称
+        method: Runtime 方法名
+        params: 工具参数
+        execution_mode: 执行模式
+        package_executor: PackageExecutor 实例
+        batch_runner: BatchRunner 实例
+    
+    Returns:
+        执行结果字典
+    """
+    if execution_mode == "file_package":
+        # 文件包执行模式
+        if package_executor is None:
+            return {
+                "success": False,
+                "error": "PackageExecutor not initialized for file_package mode",
+            }
+        return package_executor.execute(tool_name, params)
+    
+    elif execution_mode == "batch":
+        # 批量执行模式
+        if batch_runner is None:
+            return {
+                "success": False,
+                "error": "BatchRunner not initialized for batch mode",
+            }
+        batch_result = batch_runner.run_batch(tool_name, params)
+        return batch_result.to_dict()
+    
+    else:
+        # 默认 runtime 执行模式
+        runtime_result = call_runtime(runtime_client, tool_name=tool_name, method=method, params=params)
+        
+        # 特殊处理 server.health，添加 backend capabilities 信息
+        if tool_name == "server.health":
+            runtime_result = _enhance_health_response(runtime_result, package_executor, batch_runner)
+        
+        return runtime_result
+
+
+def _enhance_health_response(
+    result: dict[str, Any],
+    package_executor: PackageExecutor | None,
+    batch_runner: BatchRunner | None,
+) -> dict[str, Any]:
+    """
+    增强 server.health 响应，添加 backend capabilities 信息。
+    
+    Args:
+        result: 原始 health 响应
+        package_executor: PackageExecutor 实例
+        batch_runner: BatchRunner 实例
+    
+    Returns:
+        增强后的 health 响应
+    """
+    # 确保 result 是字典
+    if not isinstance(result, dict):
+        result = {"status": result}
+    
+    # 添加 backend capabilities 信息
+    backend_capabilities = {
+        "excel_com": {
+            "available": True,  # Runtime 可用时即为 True
+            "description": "Excel COM automation via Runtime",
+        },
+        "file_package": {
+            "available": package_executor is not None,
+            "description": "Direct file package manipulation (no Excel required)",
+            "supported_extensions": [".xlsx", ".xlsm", ".xltx", ".xltm"],
+            "dry_run_supported": True,
+        },
+        "batch": {
+            "available": batch_runner is not None,
+            "description": "Batch processing for multiple files",
+            "parallel_supported": True,
+            "max_workers": 4,
+        },
+    }
+    
+    # 添加执行模式统计
+    manifest_registry = ToolManifestRegistry()
+    mode_stats = manifest_registry.get_execution_mode_stats()
+    backend_stats = manifest_registry.get_backend_requirement_stats()
+    
+    result["backend_capabilities"] = backend_capabilities
+    result["tool_stats"] = {
+        "execution_modes": mode_stats,
+        "backend_requirements": backend_stats,
+    }
+    
+    return result
+
+
 def register_tools_for_profile(
     mcp: FastMCP,
     runtime: Any,
@@ -1284,7 +1630,26 @@ def register_tools_for_profile(
     disabled_bundles: list[str],
     profiles_path: Path | None = None,
     bundles_path: Path | None = None,
-) -> None:
+    dry_run: bool = False,
+    clone_output_dir: str | None = None,
+) -> list[str]:
+    """
+    为指定 Profile 注册工具。
+    
+    Args:
+        mcp: FastMCP 实例
+        runtime: Runtime 客户端实例
+        profile_name: Profile 名称
+        extra_bundles: 额外启用的 bundle 列表
+        disabled_bundles: 禁用的 bundle 列表
+        profiles_path: profiles.yaml 路径
+        bundles_path: bundles.yaml 路径
+        dry_run: 是否启用 dry-run 模式
+        clone_output_dir: clone output 模式的输出目录
+    
+    Returns:
+        启用的工具名称列表
+    """
     resolver = ProfileResolver(profiles_path)
     bundle_registry = BundleRegistry(bundles_path)
 
@@ -1311,6 +1676,30 @@ def register_tools_for_profile(
     check_tool_budget(len(enabled_tools), profile_info)
     log_profile_summary(profile_info, enabled_tools, resolved_bundles)
 
+    # 初始化工具清单注册表，用于获取工具的执行模式
+    manifest_registry = ToolManifestRegistry(bundles_path)
+    
+    # 创建 PackageExecutor 实例（用于 file_package 执行模式）
+    package_executor = PackageExecutor(
+        dry_run=dry_run,
+        clone_output_dir=clone_output_dir,
+        server_version="2.5.0",
+    )
+    logger.info("[Host] PackageExecutor initialized (dry_run=%s, clone_output_dir=%s)", dry_run, clone_output_dir)
+    
+    # 创建 BatchRunner 实例（用于 batch 执行模式）
+    batch_config = BatchConfig(
+        dry_run=dry_run,
+        max_workers=4,
+        continue_on_error=True,
+        timeout_seconds=300,
+    )
+    batch_runner = BatchRunner(runtime, batch_config, package_executor)
+    logger.info("[Host] BatchRunner initialized (dry_run=%s)", dry_run)
+
+    # 统计各执行模式的工具数量
+    mode_stats = {"runtime": 0, "file_package": 0, "batch": 0}
+    
     registered_vba_tools = []
     for tool_name in enabled_tools:
         runtime_method = TOOL_MANIFEST_MAP.get(tool_name, tool_name)
@@ -1318,8 +1707,21 @@ def register_tools_for_profile(
         desc = schema_entry[0] if schema_entry else tool_name
         param_defs = schema_entry[1] if schema_entry else {}
 
-        # 动态生成带类型注解的 handler，让 FastMCP 从函数签名推断正确的 inputSchema
-        handler = _build_typed_handler(runtime, tool_name, runtime_method, param_defs)
+        # 获取工具的执行模式
+        manifest = manifest_registry.get_manifest(tool_name)
+        execution_mode = manifest.execution_mode if manifest else "runtime"
+        mode_stats[execution_mode] = mode_stats.get(execution_mode, 0) + 1
+
+        # 动态生成带类型注解的 handler，根据执行模式选择执行器
+        handler = _build_typed_handler(
+            runtime_client=runtime,
+            tool_name=tool_name,
+            runtime_method=runtime_method,
+            param_defs=param_defs,
+            execution_mode=execution_mode,
+            package_executor=package_executor,
+            batch_runner=batch_runner,
+        )
 
         mcp.tool(
             name=tool_name,
@@ -1330,6 +1732,9 @@ def register_tools_for_profile(
             registered_vba_tools.append(tool_name)
 
     logger.info("[Host] Actually registered VBA tools=%s", registered_vba_tools)
+    logger.info("[Host] Execution mode stats: %s", mode_stats)
+    
+    return enabled_tools
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1385,7 +1790,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Error resolving settings: {exc}", file=sys.stderr)
         return 1
 
-    _ensure_runtime_fresh(args, settings)
+    # 先获取启用的工具列表，用于判断是否需要启动 Runtime
+    enabled_tools = dump_tools_for_profile(
+        profile_name=args.profile,
+        extra_bundles=args.enabled_bundles,
+        disabled_bundles=args.disabled_bundles,
+        profiles_path=profiles_path,
+        bundles_path=bundles_path,
+    )
+
+    # 只在有需要 Excel COM 的工具时才启动 Runtime
+    _ensure_runtime_fresh(args, settings, enabled_tools)
 
     try:
         runtime = create_host_runtime_client(settings)
@@ -1396,6 +1811,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.print_runtime_endpoint:
         print(f"Runtime endpoint: {settings.identity.pipe_name}")
         print(f"Runtime instance ID: {settings.identity.instance_id}")
+
+    # 显示 dry-run 模式状态
+    if args.dry_run:
+        print("[ExcelForge] DRY-RUN mode enabled - no actual changes will be made", file=sys.stderr)
+    if args.clone_output_dir:
+        print(f"[ExcelForge] Clone output directory: {args.clone_output_dir}", file=sys.stderr)
 
     display_name = f"{settings.display_name} ({args.profile})"
     mcp = FastMCP(display_name)
@@ -1408,6 +1829,8 @@ def main(argv: list[str] | None = None) -> int:
         disabled_bundles=args.disabled_bundles,
         profiles_path=profiles_path,
         bundles_path=bundles_path,
+        dry_run=args.dry_run,
+        clone_output_dir=args.clone_output_dir,
     )
 
     try:

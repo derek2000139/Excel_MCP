@@ -132,7 +132,7 @@ class RangeService:
         *,
         workbook_id: str,
         sheet_name: str | None,
-        start_cell: str,
+        range: str,
         values: list[list[Any]],
     ) -> dict[str, Any]:
         try:
@@ -146,7 +146,7 @@ class RangeService:
         if cell_count > self._config.limits.max_write_cells:
             raise ExcelForgeError(ErrorCode.E413_RANGE_TOO_LARGE, f"Write range too large: {cell_count}")
 
-        start = parse_cell(start_cell)
+        start = parse_cell(range)
         target_ref = RangeRef(start=start, end=CellRef(row=start.row + rows - 1, col=start.col + cols - 1))
         target_range = range_to_a1(target_ref)
 

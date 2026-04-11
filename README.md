@@ -34,6 +34,14 @@ cd ExcelForge
 uv sync
 ```
 
+> **依赖说明**：`uv sync` 会自动从 `pyproject.toml` 安装以下依赖包：
+> - pydantic >= 2.8
+> - PyYAML >= 6.0.1
+> - mcp >= 1.2.0
+> - pywin32 >= 306 (Windows)
+> - psutil >= 5.9.0
+> - openpyxl >= 3.1.5
+
 ### 第四步：快速验证
 
 ```powershell
@@ -47,11 +55,36 @@ uv run python -m excelforge.gateway.host --config excel-mcp.yaml --list-bundles
 uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile basic_edit --dump-tools
 ```
 
+## 配置文件说明
+
+本项目使用两个配置文件，一般不需要修改：
+
+| 文件 | 作用 | 是否需要修改 |
+|------|------|-------------|
+| `excel-mcp.yaml` | Gateway 入口配置，定义服务端口、超时等 | 一般不需要 |
+| `runtime-config.yaml` | Excel 运行时配置，定义 Excel 行为、路径限制等 | 按需调整 |
+
+两个文件都使用相对路径，确保从项目根目录运行命令即可正常工作。
+
 ## 启动
 
 ```bash
 uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile basic_edit
 ```
+
+### 如何选择 Profile
+
+Profile 决定暴露哪些工具，根据使用场景选择：
+
+| 场景 | 推荐 Profile | 说明 |
+|------|-------------|------|
+| 基础读写操作 | `basic_edit` | 打开/读写/Sheet 管理 |
+| 需要公式和格式 | `calc_format` | 基础 + 公式 + 格式 |
+| VBA 自动化 | `automation` | VBA + 快照/备份/回滚 |
+| 数据分析 | `data_workflow` | PQ 查询 + Table + 分析 |
+| 不确定用什么 | `basic_edit` | 最安全的选择 |
+
+切换 Profile：修改 `--profile` 参数后重启服务。
 
 ## 选择 Profile
 

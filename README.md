@@ -28,19 +28,13 @@ git clone <你的仓库地址>
 cd ExcelForge
 ```
 
-### 第三步：配置
-
-```powershell
-cp config.example.yaml runtime-config.yaml
-```
-
-### 第四步：安装依赖
+### 第三步：安装依赖
 
 ```powershell
 uv sync
 ```
 
-### 第五步：快速验证
+### 第四步：快速验证
 
 ```powershell
 # 查看可用 Profile
@@ -56,7 +50,6 @@ uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile basic
 ## 启动
 
 ```bash
-uv sync
 uv run python -m excelforge.gateway.host --config excel-mcp.yaml --profile basic_edit
 ```
 
